@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr" class="">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#4f46e5">
+<!-- Base de l'API backend XSchool. Laisser VIDE = prototype hors-ligne (donnees de demo).
+     Renseigner ex. content="https://api.exemple.io" pour brancher le backend Flask.
+     Alternatives : window.XSCHOOL_API_BASE ou localStorage['xschool-api-base']. -->
+<meta name="xschool-api" content="">
+<title>XSchool — EMS mobile-first</title>
+
+<!-- Tailwind (CDN) + configuration externalisee -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="assets/js/tailwind.config.js"></script>
+
+<!-- Polices -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Librairies tierces -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+<!-- Styles applicatifs externalises -->
+<link rel="stylesheet" href="assets/css/styles.css">
+
+<!-- Anti-FOUC : applique le theme sauvegarde avant le rendu -->
+<script>
+  try {
+    var t = localStorage.getItem('xschool-theme')
+      || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
+    if (t === 'dark') document.documentElement.classList.add('dark');
+  } catch (e) {}
+</script>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors">
+<!-- Sélection d'établissement (sous-domaine) -->
+<div id="tenant" class="min-h-screen w-full"></div>
+<!-- Login / sélection d'espace -->
+<div id="login" class="hidden min-h-screen w-full"></div>
+<div id="app" class="hidden min-h-screen relative bg-slate-50 dark:bg-slate-950 flex-col lg:flex-row">
+
+  <!-- Scrim (mobile only) -->
+  <div id="scrim" class="fixed inset-0 z-40 bg-black/40 opacity-0 pointer-events-none transition-opacity lg:hidden"></div>
+
+  <!-- Side drawer / Sidebar -->
+  <aside id="drawer" class="fixed z-50 top-0 left-0 h-full w-72 -translate-x-full transition-transform duration-300 glass border-r border-white/20 dark:border-white/10 p-5 flex flex-col lg:static lg:translate-x-0 lg:z-auto lg:h-auto lg:min-h-screen lg:shrink-0 lg:transition-none">
+    <div class="flex items-center gap-3 mb-6">
+      <div class="w-11 h-11 rounded-2xl bg-brand-600 text-white grid place-items-center font-extrabold shadow-glow">X</div>
+      <div><p class="font-extrabold leading-tight">XSchool</p><p class="text-xs text-slate-500 truncate" id="drawerSchool">Lycée Technique Moderne</p></div>
+    </div>
+    <nav id="drawerNav" class="flex-1 space-y-1 text-sm overflow-y-auto"></nav>
+    <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+      <div class="flex items-center gap-3">
+        <div id="drawerDot" class="w-9 h-9 rounded-xl grid place-items-center text-white shrink-0"></div>
+        <div class="text-xs min-w-0"><p class="font-semibold truncate" id="drawerUser">—</p><p class="text-slate-500 truncate" id="drawerRole">—</p></div>
+      </div>
+      <button id="logoutBtn" class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-semibold text-slate-600 dark:text-slate-300 active:scale-95 transition">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        Changer d’espace
+      </button>
+    </div>
+  </aside>
+
+  <!-- Content column -->
+  <div id="content" class="flex-1 flex flex-col min-w-0 min-h-screen">
+
+  <!-- Topbar -->
+  <header class="glass sticky top-0 z-30 px-4 pt-3 pb-3 border-b border-white/20 dark:border-white/10 lg:px-8">
+    <div class="flex items-center justify-between gap-4">
+      <button id="menuBtn" class="w-10 h-10 grid place-items-center rounded-xl bg-white/70 dark:bg-slate-800 shadow-soft active:scale-95 transition lg:hidden">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <div class="text-center lg:text-left"><p class="text-[11px] uppercase tracking-widest text-slate-400" id="roleTag">—</p><p class="font-bold text-sm -mt-0.5 lg:text-lg" id="viewTitle">Tableau de bord</p></div>
+      <div class="flex items-center gap-2 lg:ml-auto">
+        <div class="flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-2xl bg-brand-600/10 dark:bg-brand-500/15" title="Année scolaire active">
+          <span class="text-[10px] font-bold text-brand-700 dark:text-brand-300 hidden sm:inline">Année</span>
+          <select id="yearPick" class="bg-transparent text-xs font-bold text-brand-700 dark:text-brand-300 outline-none cursor-pointer"></select>
+        </div>
+        <div id="userChip" class="hidden lg:flex items-center gap-2 pl-2 pr-1 py-1 rounded-2xl bg-slate-200/70 dark:bg-slate-800/70">
+          <div class="text-right leading-tight"><p class="text-xs font-bold" id="chipName">—</p><p class="text-[10px] text-slate-500" id="chipRole">—</p></div>
+          <div id="chipDot" class="w-8 h-8 rounded-xl grid place-items-center text-white"></div>
+        </div>
+        <button id="themeBtn" class="w-10 h-10 grid place-items-center rounded-xl bg-white/70 dark:bg-slate-800 shadow-soft active:scale-95 transition">
+          <svg id="iconMoon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z"/></svg>
+          <svg id="iconSun" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main id="main" class="flex-1 overflow-y-auto px-4 pt-4 pb-28 mx-auto w-full max-w-6xl lg:px-8 lg:pt-6 lg:pb-10"></main>
+
+  <!-- Bottom navigation (mobile only) -->
+  <nav id="bottomNav" class="glass fixed bottom-0 left-0 right-0 z-30 border-t border-white/20 dark:border-white/10 px-2 pt-2 lg:hidden" style="padding-bottom:calc(8px + var(--safe))">
+    <div id="bottomItems" class="grid grid-cols-5 relative max-w-md mx-auto"></div>
+  </nav>
+  </div>
+</div>
+
+<!-- Application : modules charges dans l'ordre (portee globale partagee) -->
+<script src="assets/js/core.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/data.js"></script>
+<script src="assets/js/views.js"></script>
+<script src="assets/js/admin.js"></script>
+<script src="assets/js/stats.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

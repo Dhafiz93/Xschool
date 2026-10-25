@@ -1,0 +1,58 @@
+# XSchool — pile locale complete (PostgreSQL + API Flask [+ front statique]).
+#
+# Usage :
+#   docker compose up --build            # db + api
+#   SEED_DEMO=1 docker compose up --build # + jeu de donnees de demo
+#   docker compose --profile front up --build   # + front sur http://localhost:8080
+#
+# L'API ecoute sur http://localhost:8000 (health: /health).
+# Le service 'front' suppose que le dossier ../xschool-frontend existe a cote
+# de ce dossier (monorepo). Sinon, ignore le profil 'front'.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: xschool
+      POSTGRES_PASSWORD: xschool
+      POSTGRES_DB: xschool
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xschool -d xschool"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://xschool:xschool@db:5432/xschool
+      SECRET_KEY: dev-secret-change-me
+      JWT_SECRET_KEY: dev-jwt-change-me
+      FLASK_ENV: production
+      CORS_ORIGINS: "*"
+      PORT: "8000"
+      # Mets SEED_DEMO=1 pour peupler automatiquement au 1er demarrage
+      SEED_DEMO: "${SEED_DEMO:-0}"
+    ports:
+      - "8000:8000"
+
+  # Front statique (optionnel) : nginx qui sert le dossier du frontend.
+  front:
+    image: nginx:alpine
+    profiles: ["front"]
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+    volumes:
+      - ../xschool-frontend:/usr/share/nginx/html:ro
+
+volumes:
+  pgdata:

@@ -1,0 +1,79 @@
+# ============================================================
+# XSchool — Render Blueprint (à placer À LA RACINE du monorepo)
+#
+#   xschool/
+#     render.yaml          <-- CE FICHIER
+#     xschool-backend/     API Flask (rootDir du service web)
+#     xschool-frontend/    Front statique (rootDir du site)
+#
+# Déploie 3 ressources d'un coup : base PostgreSQL managee, API Flask, front statique.
+# Render → New → Blueprint → choisis le dépôt : il lit ce fichier automatiquement.
+# ============================================================
+
+databases:
+  - name: xschool-db
+    plan: free
+    databaseName: xschool
+    user: xschool
+
+services:
+  # ---------------------------------------------------------
+  # API Flask (gunicorn)
+  # ---------------------------------------------------------
+  - type: web
+    name: xschool-api
+    runtime: python
+    plan: free
+    rootDir: xschool-backend
+    buildCommand: pip install -r requirements.txt
+    # Crée le schéma : migrations si présentes, sinon create-tables (idempotent)
+    preDeployCommand: "sh -c 'if ls migrations/versions/*.py >/dev/null 2>&1; then flask db upgrade; else flask create-tables; fi'"
+    startCommand: gunicorn wsgi:app
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: xschool-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: JWT_ACCESS_MINUTES
+        value: "120"
+      - key: FLASK_APP
+        value: wsgi.py
+      - key: FLASK_ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: "3.12.5"
+      # À ADAPTER après le 1er deploy du front : remplace par l'URL EXACTE du site
+      # statique, SCHÉMA COMPRIS (ex: https://xschool-front.onrender.com).
+      # NB: on ne câble pas 'fromService host' car il renvoie l'hôte SANS https://,
+      # ce que le CORS navigateur ne reconnaîtrait pas. '*' marche mais est permissif.
+      - key: CORS_ORIGINS
+        value: "*"
+
+  # ---------------------------------------------------------
+  # Front statique (HTML / CSS / JS)
+  # ---------------------------------------------------------
+  - type: web
+    name: xschool-front
+    runtime: static
+    rootDir: xschool-frontend
+    buildCommand: ""
+    staticPublishPath: .
+    autoDeploy: true
+    # Laisse les routes inconnues retomber sur index.html (single-page)
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff

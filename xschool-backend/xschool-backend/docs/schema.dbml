@@ -1,0 +1,164 @@
+// XSchool - schema de base (DBML pour https://dbdiagram.io)
+// Colle ce contenu sur dbdiagram.io pour un ERD editable.
+
+Table schools {
+  id int [pk, increment]
+  name varchar
+  slug varchar [unique, not null]
+  active boolean [default: true]
+}
+
+Table school_configs {
+  id int [pk, increment]
+  school_id int [ref: - schools.id, unique, not null]
+  grade_max decimal [default: 20]
+  pass_mark decimal [default: 10]
+  avg_mode varchar [note: 'weighted|simple']
+  avg_decimals int [default: 2]
+  rank_visible boolean [default: true]
+  rank_ties boolean [default: true]
+  opt_fac_coef1 boolean [default: false]
+  bulletin_tpl varchar [default: 'standard']
+  bulletin_fmt varchar [note: 'vrac|groupe|specialite']
+  bulletin_fmt_by_cycle jsonb
+  mentions jsonb
+  phone varchar
+  email varchar
+  address text
+  director varchar
+}
+
+Table users {
+  id int [pk, increment]
+  school_id int [ref: > schools.id, note: 'null si superadmin']
+  email varchar [unique, not null]
+  password_hash varchar [not null]
+  full_name varchar
+  role varchar [note: 'superadmin|admin|teacher|supervisor|student']
+  active boolean [default: true]
+}
+
+Table cycles {
+  id int [pk, increment]
+  school_id int [ref: > schools.id, not null]
+  name varchar [not null]
+  active boolean [default: true]
+  indexes { (school_id, name) [unique] }
+}
+
+Table classes {
+  id int [pk, increment]
+  school_id int [ref: > schools.id, not null]
+  cycle varchar [not null]
+  name varchar [not null]
+  grp varchar
+  spec varchar
+}
+
+Table subjects {
+  id int [pk, increment]
+  school_id int [ref: > schools.id, not null]
+  name varchar [not null]
+  dom varchar [note: 'sci|litt|autre']
+}
+
+Table programs {
+  id int [pk, increment]
+  school_id int [ref: > schools.id, not null]
+  class_id int [ref: > classes.id, not null]
+  subject_id int [ref: > subjects.id, not null]
+  coef decimal [default: 1]
+  oblig boolean [default: true, note: 'false = facultative']
+  spec boolean [default: false, note: 'true = specialite']
+  indexes { (class_id, subject_id) [unique] }
+}
+
+Table students {
+  id int [pk, increment]
+  school_id int [ref: > schools.id, not null]
+  matricule varchar
+  nom varchar [not null]
+  prenom varchar
+  sexe varchar
+  dob varchar
+  lieu varchar
+  pere varchar
+  mere varchar
+  class_id int [ref: > classes.id]
+  indexes { (school_id, matricule) [unique] }
+}
+
+Table enrollments {
+  id int [pk, increment]
+  school_id int [ref: > schools.id, not null]
+  student_id int [ref: > students.id, not null]
+  class_id int [ref: > classes.id]
+  year varchar [not null]
+  statut varchar
+  regime varchar
+  indexes { (student_id, year) [unique] }
+}
+
+Table teachers {
+  id int [pk, increment]
+  school_id int [ref: > schools.id, not null]
+  nom varchar [not null]
+  prenom varchar
+  spec varchar
+  tel varchar
+  subs jsonb
+  classes jsonb
+}
+
+Table grades {
+  id int [pk, increment]
+  school_id int [ref: > schools.id, not null]
+  class_id int [ref: > classes.id, not null]
+  subject_id int [ref: > subjects.id, not null]
+  student_id int [ref: > students.id, not null]
+  year varchar [not null]
+  period varchar [not null]
+  detail jsonb
+  moy decimal
+  indexes { (class_id, subject_id, period, student_id, year) [unique] }
+}
+
+Table attendance {
+  id int [pk, increment]
+  school_id int [ref: > schools.id, not null]
+  student_id int [ref: > students.id, not null]
+  class_id int [ref: > classes.id, not null]
+  date varchar [not null]
+  status varchar [note: 'present|retard|absent']
+}
+
+Table discipline {
+  id int [pk, increment]
+  school_id int [ref: > schools.id, not null]
+  student_id int [ref: > students.id, not null]
+  date varchar
+  motif varchar
+  gravite varchar
+}
+
+Table payments {
+  id int [pk, increment]
+  school_id int [ref: > schools.id, not null]
+  student_id int [ref: > students.id, not null]
+  year varchar
+  amount decimal [default: 0]
+  mode varchar
+  ref varchar
+  label varchar
+  date varchar
+}
+
+Table audit_logs {
+  id int [pk, increment]
+  school_id int [ref: > schools.id]
+  user_id int [ref: > users.id]
+  action varchar [not null]
+  target varchar
+  detail text
+  ip varchar
+}

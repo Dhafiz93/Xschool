@@ -1,0 +1,8 @@
+Migrations de base de donnees gerees par Flask-Migrate (Alembic).
+
+La premiere migration n'est pas fournie : genere-la contre ta propre base avec
+  flask db migrate -m "initial schema"
+puis applique-la avec
+  flask db upgrade
+
+Le dossier versions/ est vide au depart (voir versions/.gitkeep).

@@ -1,0 +1,216 @@
+%% XSchool - Diagramme ERD complet (Mermaid)
+%% EMS SaaS multi-ecoles. Multi-tenant : school_id present sur toutes les tables metier.
+%% Relations : || un, o{ plusieurs, |o zero-ou-un.
+erDiagram
+  %% ---- Relations tenant (school_id) ----
+  SCHOOLS ||--|| SCHOOL_CONFIGS : "configure"
+  SCHOOLS ||--o{ USERS : "emploie"
+  SCHOOLS ||--o{ CYCLES : "definit"
+  SCHOOLS ||--o{ CLASSES : "possede"
+  SCHOOLS ||--o{ SUBJECTS : "propose"
+  SCHOOLS ||--o{ PROGRAMS : "planifie"
+  SCHOOLS ||--o{ STUDENTS : "inscrit"
+  SCHOOLS ||--o{ ENROLLMENTS : "gere"
+  SCHOOLS ||--o{ TEACHERS : "recrute"
+  SCHOOLS ||--o{ GRADES : "note"
+  SCHOOLS ||--o{ ATTENDANCE : "suit"
+  SCHOOLS ||--o{ DISCIPLINE : "sanctionne"
+  SCHOOLS ||--o{ PAYMENTS : "encaisse"
+  SCHOOLS |o--o{ AUDIT_LOGS : "trace"
+
+  %% ---- Relations metier ----
+  CLASSES ||--o{ PROGRAMS : "a_au_programme"
+  SUBJECTS ||--o{ PROGRAMS : "figure_dans"
+  CLASSES |o--o{ STUDENTS : "accueille"
+  STUDENTS ||--o{ ENROLLMENTS : "inscrit_par_annee"
+  CLASSES |o--o{ ENROLLMENTS : "rattache"
+  CLASSES ||--o{ GRADES : "concerne"
+  SUBJECTS ||--o{ GRADES : "porte_sur"
+  STUDENTS ||--o{ GRADES : "obtient"
+  CLASSES ||--o{ ATTENDANCE : "pour"
+  STUDENTS ||--o{ ATTENDANCE : "pointe"
+  STUDENTS ||--o{ DISCIPLINE : "fait_objet"
+  STUDENTS ||--o{ PAYMENTS : "regle"
+  USERS |o--o{ AUDIT_LOGS : "agit"
+
+  %% ======================= ENTITES =======================
+  SCHOOLS {
+    int id PK
+    string name
+    string slug UK
+    bool active
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  SCHOOL_CONFIGS {
+    int id PK
+    int school_id FK "UK, ON DELETE CASCADE"
+    numeric grade_max
+    numeric pass_mark
+    string avg_mode "weighted|simple"
+    int avg_decimals
+    bool rank_visible
+    bool rank_ties
+    bool opt_fac_coef1
+    string bulletin_tpl
+    string bulletin_fmt "vrac|groupe|specialite"
+    jsonb bulletin_fmt_by_cycle
+    jsonb mentions
+    string phone
+    string email
+    text address
+    string director
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  USERS {
+    int id PK
+    int school_id FK "NULL si superadmin"
+    string email UK
+    string password_hash "bcrypt"
+    string full_name
+    string role "superadmin|admin|teacher|supervisor|student"
+    bool active
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  CYCLES {
+    int id PK
+    int school_id FK
+    string name "UK(school_id,name)"
+    bool active
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  CLASSES {
+    int id PK
+    int school_id FK
+    string cycle
+    string name
+    string grp
+    string spec
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  SUBJECTS {
+    int id PK
+    int school_id FK
+    string name
+    string dom "sci|litt|autre"
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  PROGRAMS {
+    int id PK
+    int school_id FK
+    int class_id FK
+    int subject_id FK
+    numeric coef
+    bool oblig "false=facultative"
+    bool spec "true=specialite"
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  STUDENTS {
+    int id PK
+    int school_id FK
+    string matricule "UK(school_id,matricule)"
+    string nom
+    string prenom
+    string sexe
+    string dob
+    string lieu
+    string pere
+    string contact_pere
+    string mere
+    string contact_mere
+    string photo
+    int class_id FK "ON DELETE SET NULL"
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  ENROLLMENTS {
+    int id PK
+    int school_id FK
+    int student_id FK
+    int class_id FK "ON DELETE SET NULL"
+    string year "UK(student_id,year)"
+    string statut
+    string regime
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  TEACHERS {
+    int id PK
+    int school_id FK
+    string nom
+    string prenom
+    string dob
+    string dip
+    string spec
+    string tel
+    string urg_nom
+    string urg_tel
+    string photo
+    jsonb subs
+    jsonb classes
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  GRADES {
+    int id PK
+    int school_id FK
+    int class_id FK
+    int subject_id FK
+    int student_id FK
+    string year
+    string period
+    jsonb detail
+    numeric moy "numeric(6,3) nullable"
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  ATTENDANCE {
+    int id PK
+    int school_id FK
+    int student_id FK
+    int class_id FK
+    string date
+    string status "present|retard|absent"
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  DISCIPLINE {
+    int id PK
+    int school_id FK
+    int student_id FK
+    string date
+    string motif
+    string gravite
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  PAYMENTS {
+    int id PK
+    int school_id FK
+    int student_id FK
+    string year
+    numeric amount
+    string mode
+    string ref
+    string label
+    string date
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  AUDIT_LOGS {
+    int id PK
+    int school_id FK "ON DELETE SET NULL"
+    int user_id FK "ON DELETE SET NULL"
+    string action
+    string target
+    text detail
+    string ip
+    timestamptz created_at
+    timestamptz updated_at
+  }
