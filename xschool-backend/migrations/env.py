@@ -1,5 +1,6 @@
 """Environnement de migration Alembic pour Flask-Migrate."""
 import logging
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -7,7 +8,10 @@ from flask import current_app
 
 config = context.config
 
-if config.config_file_name is not None:
+# Flask-Migrate pointe config_file_name sur migrations/alembic.ini. Dans ce repo,
+# alembic.ini est a la racine du backend : on ne charge la config de logs que si
+# le fichier existe reellement (evite FileNotFoundError, non bloquant).
+if config.config_file_name is not None and os.path.exists(config.config_file_name):
     fileConfig(config.config_file_name)
 logger = logging.getLogger("alembic.env")
 
