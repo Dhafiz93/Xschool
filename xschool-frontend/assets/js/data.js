@@ -44,6 +44,95 @@
     {id:'sc3',name:'Complexe Éducatif El Hadj',code:'CEH228',slug:'elhadj',cycles:['Primaire','Collège','Lycée Moderne']}
   ];
   function activeSchool(){ return SCHOOLS.find(s=>s.id===state.schoolId)||SCHOOLS[0]; }
+  // Nom de l'utilisateur réellement connecté (mode API) ; sinon nom de démo du rôle.
+  function sessionUserName(){
+    try{ if(typeof API!=='undefined' && API.authenticated()){ const u=API.user(); if(u) return u.full_name||u.email||''; } }catch(e){}
+    return (typeof ROLES!=='undefined' && ROLES[state.role] && ROLES[state.role].name)||'';
+  }
+  // Fiche enseignant correspondant au compte REELLEMENT connecte.
+  //  - Mode connecte (donnees reelles, demo videe) : on resout le prof via le
+  //    compte authentifie (lien explicite teacherId sinon correspondance par
+  //    nom complet / email). Aucune fiche trouvee => null (vues vides, pas de
+  //    prof de demo code en dur).
+  //  - Mode demo (hors ligne) : on retombe sur le nom de demo du role.
+  function currentTeacher(){
+    const norm=s=>String(s||'').trim().toLowerCase().replace(/\s+/g,' ');
+    const list=(typeof DB!=='undefined' && DB.teachers)?DB.teachers:[];
+    if(!list.length) return null;
+    try{
+      if(typeof apiOn==='function' && apiOn() && typeof API!=='undefined' && API.authenticated()){
+        const u=API.user?API.user():null;
+        if(!u) return null;
+        // 1) lien explicite compte -> fiche (teacherId cote front, le cas echeant)
+        let tid;
+        if(typeof USERS!=='undefined' && u.id!=null){
+          const acc=USERS.find(x=>x.apiId!=null && x.apiId===u.id);
+          if(acc && acc.teacherId) tid=acc.teacherId;
+        }
+        if(tid==null) tid=u.teacher_id!=null?u.teacher_id:u.teacherId;
+        if(tid!=null){ const byId=list.find(t=>t.id===tid||t.apiId===tid); if(byId) return byId; }
+        // 2) correspondance par nom complet
+        const nm=norm(u.full_name||u.name||'');
+        if(nm){ const byName=list.find(t=>norm(teacName(t))===nm || norm(t.n||'')===nm); if(byName) return byName; }
+        // 3) correspondance par email
+        const em=(u.email||'').toLowerCase();
+        if(em){ const byMail=list.find(t=>(t.email||'').toLowerCase()===em); if(byMail) return byMail; }
+        return null; // compte connecte sans fiche enseignant : donnees reelles vides
+      }
+    }catch(e){}
+    // Mode demo : nom de demo du role enseignant.
+    const dnm=(typeof ROLES!=='undefined' && ROLES.teacher)?ROLES.teacher.name:'';
+    return list.find(t=>t.n===dnm)||null;
+  }
+  // Fiche eleve correspondant au compte REELLEMENT connecte (espace Eleve/Parent).
+  //  - Mode connecte (donnees reelles, demo videe) : on resout l'eleve via le
+  //    compte authentifie (lien explicite studentId sinon correspondance par
+  //    nom complet / email). Aucune fiche trouvee => null (dashboard vide, pas
+  //    de chiffres de demo codes en dur).
+  //  - Mode demo (hors ligne) : null (le dashboard garde la vue etablissement).
+  function currentStudent(){
+    // Normalisation robuste : minuscules, SANS accents, ponctuation/espaces reduits.
+    const strip=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    const norm=s=>strip(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+    // Jeu de mots trie : compare deux noms sans tenir compte de l'ordre
+    // (nom/prenom inverses) ni des accents/espaces.
+    const tokens=s=>norm(s).split(' ').filter(Boolean).sort();
+    const sameName=(a,b)=>{ const ta=tokens(a), tb=tokens(b); if(!ta.length||!tb.length) return false; return ta.length===tb.length && ta.every((w,i)=>w===tb[i]); };
+    const list=(typeof DB!=='undefined' && DB.students)?DB.students:[];
+    if(!list.length) return null;
+    try{
+      if(typeof apiOn==='function' && apiOn() && typeof API!=='undefined' && API.authenticated()){
+        const u=API.user?API.user():null;
+        if(!u) return null;
+        // 1) lien explicite compte -> fiche (prioritaire, toujours respecte)
+        let sid;
+        if(typeof USERS!=='undefined' && u.id!=null){
+          const acc=USERS.find(x=>x.apiId!=null && x.apiId===u.id);
+          if(acc && acc.studentId) sid=acc.studentId;
+        }
+        if(sid==null) sid=u.student_id!=null?u.student_id:u.studentId;
+        if(sid!=null){ const byId=list.find(s=>s.id===sid||s.apiId===sid); if(byId) return byId; }
+        // 2) correspondance par matricule (present dans login/email/username/nom).
+        //    On n'accepte QU'UNE seule fiche candidate (jamais exposer autrui).
+        const mats=[u.matricule,u.login,u.username,(u.email||'').split('@')[0],u.name,u.full_name].map(v=>norm(v)).filter(Boolean);
+        const hay=' '+mats.join(' ')+' ';
+        if(mats.length){
+          const byMat=list.filter(s=>{ const m=norm(s.mat); return !!m && (mats.indexOf(m)>=0 || hay.indexOf(' '+m+' ')>=0); });
+          if(byMat.length===1) return byMat[0];
+        }
+        // 3) correspondance par nom complet (jeu de mots, ordre indifferent).
+        const full=u.full_name||u.name||'';
+        if(norm(full)){ const byName=list.filter(s=>sameName(stuName(s),full)); if(byName.length===1) return byName[0]; }
+        // 4) correspondance par email exact (si la fiche porte un email).
+        const em=norm(u.email);
+        if(em){ const byMail=list.filter(s=>norm(s.email)===em); if(byMail.length===1) return byMail[0]; }
+        // Non resolu : on NE devine PAS (jamais exposer un autre eleve). Trace discrete.
+        try{ if(typeof console!=='undefined' && console.info) console.info('[XSchool] Compte connecte sans fiche eleve resolue (id=%s, nom=%s).', u.id, full); }catch(_){}
+        return null; // compte connecte sans fiche identifiable : donnees reelles vides
+      }
+    }catch(e){}
+    return null; // mode demo : pas d'eleve connecte specifique
+  }
   function activeCycles(){ return activeSchool().cycles.filter(c=>CYCLES[c]); }
   // ---------- ANNÉES SCOLAIRES + PÉRIODES DE COMPOSITION + NOTES ----------
   const YEARS=['2024-2025','2025-2026','2026-2027'];
@@ -96,9 +185,25 @@
     if(n) logit('Alertes archivées (auto)', n+' alerte(s) de plus de '+ABS_ALERT_ARCHIVE_DAYS+' jours','info');
     return n;
   }
-  // Type de période configuré PAR CYCLE et PAR école : school.periods[cycle] = 'trimestre' | 'semestre'
-  function cyclePeriodType(cycle){ const s=activeSchool(); if(!s.periods) s.periods={}; return s.periods[cycle]||'trimestre'; }
-  function setPeriodType(cycle,type){ const s=activeSchool(); if(!s.periods) s.periods={}; s.periods[cycle]=type; }
+  // Type de periode configure PAR ANNEE SCOLAIRE, PAR CYCLE et PAR ecole, persiste
+  // dans la config de l'ecole : schoolCfg().periods[annee][cycle] = 'trimestre'|'semestre'.
+  // Sauvegarde en local + serveur et partage entre le directeur (qui regle) et les
+  // enseignants (qui saisissent les notes). Une ecole peut donc etre en trimestre une
+  // annee et en semestre la suivante. Retro-compat : ancien format plat {cycle:type}.
+  function cyclePeriodType(cycle){
+    const cfg=schoolCfg(); if(!cfg.periods||typeof cfg.periods!=='object') cfg.periods={};
+    const byYear=cfg.periods[state.year];
+    if(byYear&&typeof byYear==='object'&&(byYear[cycle]==='trimestre'||byYear[cycle]==='semestre')) return byYear[cycle];
+    // ancien format plat {cycle:'trimestre'} -> fallback toutes annees
+    const flat=cfg.periods[cycle];
+    if(flat==='trimestre'||flat==='semestre') return flat;
+    return 'trimestre';
+  }
+  function setPeriodType(cycle,type){
+    const cfg=schoolCfg(); if(!cfg.periods||typeof cfg.periods!=='object') cfg.periods={};
+    const y=state.year; if(!cfg.periods[y]||typeof cfg.periods[y]!=='object') cfg.periods[y]={};
+    cfg.periods[y][cycle]=(type==='semestre'?'semestre':'trimestre'); persistCfg();
+  }
   function periodList(type){ return type==='semestre'?['1er Semestre','2e Semestre']:['1er Trimestre','2e Trimestre','3e Trimestre']; }
   // Stockage des notes : clé year|cls|sub|period -> { stuId:{i,d,c} }
   const GRADES={};
@@ -121,16 +226,56 @@
   function noteCoef(g,coef){ const m=moyenne(g); return m==null?null:m*(coef||1); }
   function fmtN(n){ return n==null?'–':(Math.round(n*100)/100).toString().replace('.',','); }
   // Autorisation PAR CYCLE (par école) : les enseignants peuvent-ils saisir les notes ? (défaut : oui)
-  function teacherGradesAllowed(cycle){ const s=activeSchool(); if(!s.teacherGrades) s.teacherGrades={}; return s.teacherGrades[cycle]!==false; }
-  function setTeacherGrades(cycle,v){ const s=activeSchool(); if(!s.teacherGrades) s.teacherGrades={}; s.teacherGrades[cycle]=v; }
+  function teacherGradesAllowed(cycle){ const cfg=schoolCfg(); if(!cfg.teacherGrades) cfg.teacherGrades={}; return cfg.teacherGrades[cycle]!==false; }
+  function setTeacherGrades(cycle,v){ const cfg=schoolCfg(); if(!cfg.teacherGrades) cfg.teacherGrades={}; cfg.teacherGrades[cycle]=v; persistCfg(); }
   // Date limite de saisie PAR ANNÉE + CYCLE + PÉRIODE (par école). Vide = pas de limite.
   function dlKey(cycle,per){ return state.year+'|'+cycle+'|'+per; }
-  function getDeadline(cycle,per){ const s=activeSchool(); if(!s.deadlines) s.deadlines={}; return s.deadlines[dlKey(cycle,per)]||''; }
-  function setDeadline(cycle,per,d){ const s=activeSchool(); if(!s.deadlines) s.deadlines={}; const k=dlKey(cycle,per); if(d) s.deadlines[k]=d; else delete s.deadlines[k]; }
+  function getDeadline(cycle,per){ const cfg=schoolCfg(); if(!cfg.deadlines) cfg.deadlines={}; return cfg.deadlines[dlKey(cycle,per)]||''; }
+  function setDeadline(cycle,per,d){ const cfg=schoolCfg(); if(!cfg.deadlines) cfg.deadlines={}; const k=dlKey(cycle,per); if(d) cfg.deadlines[k]=d; else delete cfg.deadlines[k]; persistCfg(); }
   function deadlinePassed(cycle,per){ const d=getDeadline(cycle,per); if(!d) return false; return new Date().toISOString().slice(0,10) > d; }
   function fmtDate(d){ if(!d) return ''; const [y,m,j]=d.split('-'); return j+'/'+m+'/'+y; }
   // Paramètres généraux de l'école (identité, notation, système)
-  function schoolCfg(){ const s=activeSchool(); if(!s.cfg) s.cfg={ phone:'', email:'', address:'', director:'', logo:'', gradeMax:20, passMark:10, bulletinTpl:'officiel', bulletinFmt:'vrac', bulletinFmtByCycle:{}, optFacCoef1:false, sms:false, whatsapp:false, sender:'XSCHOOL', rankVisible:true, avgMode:'weighted', avgDecimals:2, rankTies:true, mentions:[{l:'Excellent',min:18},{l:'Très Bien',min:16},{l:'Bien',min:14},{l:'Assez Bien',min:12},{l:'Passable',min:10}] }; if(!s.cfg.mentions){ s.cfg.avgMode=s.cfg.avgMode||'weighted'; s.cfg.avgDecimals=(s.cfg.avgDecimals==null?2:s.cfg.avgDecimals); s.cfg.rankTies=(s.cfg.rankTies==null?true:s.cfg.rankTies); s.cfg.mentions=[{l:'Excellent',min:18},{l:'Très Bien',min:16},{l:'Bien',min:14},{l:'Assez Bien',min:12},{l:'Passable',min:10}]; } if(s.cfg.bulletinFmt==null) s.cfg.bulletinFmt='vrac'; if(!s.cfg.bulletinFmtByCycle) s.cfg.bulletinFmtByCycle={}; if(s.cfg.optFacCoef1==null) s.cfg.optFacCoef1=false; return s.cfg; }
+  function schoolCfg(){ const s=activeSchool(); if(!s.cfg) s.cfg={ phone:'', email:'', address:'', director:'', logo:'', minCountry:'', minMotto:'', minName:'', minDirection:'', minInspection:'', minLogo:'', bulletinOrient:'portrait', gradeMax:20, passMark:10, bulletinTpl:'officiel', bulletinFmt:'vrac', bulletinFmtByCycle:{}, periods:{}, teacherGrades:{}, deadlines:{}, optFacCoef1:false, sms:false, whatsapp:false, sender:'XSCHOOL', rankVisible:true, avgMode:'weighted', avgDecimals:2, rankTies:true, mentions:[{l:'Excellent',min:18},{l:'Très Bien',min:16},{l:'Bien',min:14},{l:'Assez Bien',min:12},{l:'Passable',min:10}] }; if(!s.cfg.mentions){ s.cfg.avgMode=s.cfg.avgMode||'weighted'; s.cfg.avgDecimals=(s.cfg.avgDecimals==null?2:s.cfg.avgDecimals); s.cfg.rankTies=(s.cfg.rankTies==null?true:s.cfg.rankTies); s.cfg.mentions=[{l:'Excellent',min:18},{l:'Très Bien',min:16},{l:'Bien',min:14},{l:'Assez Bien',min:12},{l:'Passable',min:10}]; } if(s.cfg.bulletinFmt==null) s.cfg.bulletinFmt='vrac'; if(!s.cfg.bulletinFmtByCycle) s.cfg.bulletinFmtByCycle={}; if(!s.cfg.periods) s.cfg.periods={}; if(!s.cfg.teacherGrades) s.cfg.teacherGrades={}; if(!s.cfg.deadlines) s.cfg.deadlines={}; if(s.cfg.optFacCoef1==null) s.cfg.optFacCoef1=false; if(s.cfg.minCountry==null) s.cfg.minCountry=''; if(s.cfg.minMotto==null) s.cfg.minMotto=''; if(s.cfg.minName==null) s.cfg.minName=''; if(s.cfg.minDirection==null) s.cfg.minDirection=''; if(s.cfg.minInspection==null) s.cfg.minInspection=''; if(s.cfg.minLogo==null) s.cfg.minLogo=''; if(s.cfg.bulletinOrient==null) s.cfg.bulletinOrient='portrait'; if(!s.cfg._lsLoaded){ s.cfg._lsLoaded=true; _loadCfgOverrides(s); } return s.cfg; }
+  // ---------- Persistance locale (localStorage) des parametres d'ecole ----------
+  // Le backend n'expose pas d'endpoint de sauvegarde des parametres : on conserve
+  // donc les reglages (logo, modele de bulletin, identite...) dans le navigateur,
+  // par ecole. Ils survivent ainsi a une deconnexion / reconnexion.
+  function _cfgLsKey(s){ return 'xschool-cfg:'+((s&&s.id)||'x'); }
+  function _loadCfgOverrides(s){
+    try{ if(typeof localStorage==='undefined') return; const raw=localStorage.getItem(_cfgLsKey(s)); if(!raw) return;
+      const o=JSON.parse(raw); if(o&&typeof o==='object'){ for(const k in o){ if(k==='_lsLoaded') continue; s.cfg[k]=o[k]; } }
+    }catch(e){}
+  }
+  function persistCfg(){
+    try{ if(typeof localStorage==='undefined') return; const s=activeSchool(); if(!s||!s.cfg) return;
+      const save={}; for(const k in s.cfg){ if(k==='_lsLoaded') continue; save[k]=s.cfg[k]; }
+      localStorage.setItem(_cfgLsKey(s), JSON.stringify(save));
+    }catch(e){}
+    try{ saveCfgApi(); }catch(e){}   // write-through serveur (best-effort, async)
+  }
+  // Traduit le cfg (camelCase, cote front) vers le payload API (snake_case).
+  function cfgToApiPayload(cfg){
+    return {
+      phone:cfg.phone||'', email:cfg.email||'', address:cfg.address||'', director:cfg.director||'', logo:cfg.logo||'',
+      grade_max:(cfg.gradeMax!=null?cfg.gradeMax:20), pass_mark:(cfg.passMark!=null?cfg.passMark:10),
+      avg_mode:cfg.avgMode||'weighted', avg_decimals:(cfg.avgDecimals!=null?cfg.avgDecimals:2),
+      rank_visible:cfg.rankVisible!==false, rank_ties:cfg.rankTies!==false, opt_fac_coef1:!!cfg.optFacCoef1,
+      bulletin_tpl:cfg.bulletinTpl||'officiel', bulletin_fmt:cfg.bulletinFmt||'vrac',
+      bulletin_fmt_by_cycle:cfg.bulletinFmtByCycle||{}, periods:cfg.periods||{}, teacher_grades:cfg.teacherGrades||{}, deadlines:cfg.deadlines||{}, mentions:cfg.mentions||[],
+      sms:!!cfg.sms, whatsapp:!!cfg.whatsapp, sender:cfg.sender||'XSCHOOL'
+    };
+  }
+  // Sauvegarde serveur des reglages (best-effort). N'agit qu'en mode connecte
+  // et pour un admin rattache a une ecole (le superadmin n'a pas d'ecole
+  // courante -> on evite un appel voue a l'echec). Renvoie une promesse.
+  function saveCfgApi(){
+    if(!apiOn() || !API.authenticated()) return Promise.resolve(false);
+    const u=API.user(); if(u && u.role==='superadmin') return Promise.resolve(false);
+    const s=activeSchool(); if(!s||!s.cfg) return Promise.resolve(false);
+    return API.updateCurrentSchoolConfig({ config:cfgToApiPayload(s.cfg) })
+      .then(()=>true)
+      .catch(ex=>{ if(typeof toast==='function') toast('Paramètres : sauvegarde serveur impossible ('+((ex&&ex.message)||'erreur')+'), gardés sur cet appareil'); return false; });
+  }
   // ---------- Bulletin : helpers de calcul (consomment la config) ----------
   function avgRound(n,cfg){ cfg=cfg||schoolCfg(); let d=+cfg.avgDecimals; if(isNaN(d)) d=2; const f=Math.pow(10,d); return Math.round((+n||0)*f)/f; }
   function mentionFor(moy,cfg){ cfg=cfg||schoolCfg(); const ms=(cfg.mentions||[]).slice().filter(m=>m.l).sort((a,b)=>b.min-a.min); const hit=ms.find(m=>moy>=m.min); return hit?hit.l:'—'; }
@@ -153,7 +298,7 @@
     const ptype=cyclePeriodType(cls.cycle);
     const pers=periodList(ptype);
     const subs=DB.program.filter(p=>p.cls===clsId).map(p=>({sub:getSub(p.sub),coef:p.coef,oblig:p.oblig,spec:p.spec})).filter(x=>x.sub);
-    const studs=DB.students.filter(e=>e.cls===clsId);
+    const studs=studentsInClass(clsId);
     // Donnees deja calculees periode par periode (moyGen + rang + lignes matieres)
     const perData=pers.map(per=>classBulletinData(clsId,per));
     const byStu={};
@@ -232,7 +377,178 @@
   function enrollFor(e,year){ ensureEnroll(e); return e.enrollments.find(x=>x.year===year)||null; }
   function setEnroll(e,year,cls,statut){ ensureEnroll(e); const en=e.enrollments.find(x=>x.year===year); if(en){ en.cls=cls; if(statut!=null) en.statut=statut; } else { e.enrollments.push({year,cls,statut:statut||'Nouveau'}); } }
   function studentsOfYear(year){ return DB.students.filter(e=>!!enrollFor(e,year)); }
+  // ---------- Appartenance a une classe PAR ANNEE SCOLAIRE (via inscriptions) ----------
+  // clsOfYear : classe effective de l'eleve pour l'annee demandee.
+  //   - renvoie l'id de classe si l'eleve est inscrit cette annee-la ;
+  //   - '' s'il est inscrit sans classe ;
+  //   - null s'il n'etait pas (encore) inscrit cette annee (il disparait alors des filtres).
+  // Repli retro-compat : si aucune inscription explicite mais que l'annee demandee
+  // est l'annee de reference de l'eleve, on prend e.cls.
+  function clsOfYear(e,year){ year=year||state.year; const en=enrollFor(e,year); if(en) return en.cls||''; if((e.year||'')===year) return e.cls||''; return null; }
+  // Eleves inscrits dans une classe pour une annee (defaut : annee active).
+  function studentsInClass(clsId,year){ year=year||state.year; return DB.students.filter(e=>clsOfYear(e,year)===clsId); }
+  // Eleves inscrits cette annee mais sans classe affectee.
+  function studentsNoClass(year){ year=year||state.year; return DB.students.filter(e=>clsOfYear(e,year)===''); }
+  // ---------- Coherence annee/classe (bulletin eleve/parent) ----------
+  // Annees ou l'eleve est inscrit AVEC une classe (via enrollments + retro-compat).
+  function studentClassYears(e){ if(!e) return []; ensureEnroll(e); const ys=new Set();
+    (e.enrollments||[]).forEach(x=>{ if(x&&x.year&&x.cls) ys.add(x.year); });
+    if(e.year&&e.cls) ys.add(e.year);
+    return YEARS.filter(y=>ys.has(y)); }
+  // Annees ou l'eleve possede au moins une note exploitable (moyenne calculable).
+  function studentGradeYears(e){ if(!e) return []; const ys=new Set();
+    for(const k in GRADES){ const cell=GRADES[k]&&GRADES[k][e.id]; if(cell&&moyenne(cell)!=null) ys.add(k.split('|')[0]); }
+    return YEARS.filter(y=>ys.has(y)); }
   function yearStats(year){ const list=studentsOfYear(year); let f=0,m=0,red=0,nouv=0,sans=0; list.forEach(e=>{ const en=enrollFor(e,year); if(e.sexe==='F') f++; else m++; if((en.statut||'')==='Redoublant') red++; else nouv++; if(!en.cls) sans++; }); return {total:list.length,f,m,red,nouv,sans,list}; }
+  // Renvoie true si une annee scolaire possede des donnees rattachees (inscriptions, notes, paiements, discipline).
+  // Sert de garde-fou pour interdire la suppression d'une annee non vide.
+  function yearHasData(year){
+    if(!year) return false;
+    // Eleves inscrits cette annee (via enrollments ou retro-compat e.year)
+    if(DB.students.some(e=>!!enrollFor(e,year) || (e.year||'')===year)) return true;
+    // Notes saisies cette annee (cle 'year|cls|sub|per')
+    const pfx=year+'|';
+    for(const k in GRADES){ if(k.indexOf(pfx)===0 && Object.keys(GRADES[k]||{}).length) return true; }
+    // Paiements rattaches a cette annee
+    if(typeof PAY_STORE!=='undefined' && PAY_STORE.some(p=>p.year===year)) return true;
+    // Incidents de discipline rattaches a cette annee
+    if(typeof DISC_STORE!=='undefined' && DISC_STORE.some(d=>d.year===year)) return true;
+    return false;
+  }
+
+  /* ---------- INDICATEURS DYNAMIQUES (tableaux de bord) ----------
+   * Tout est calcule a la volee a partir des donnees en memoire (reelles en
+   * mode API). Aucune valeur n'est codee en dur : si une donnee manque, on
+   * renvoie null -> l'affichage montre « — ». */
+  function fmtMoney(n){ n=+n||0; const neg=n<0; n=Math.abs(n);
+    let out; if(n>=1e6) out=(Math.round(n/1e5)/10).toString().replace('.',',')+' M';
+    else if(n>=1e3) out=Math.round(n/1e3)+' k'; else out=String(Math.round(n));
+    return (neg?'-':'')+out; }
+  function pctStr(n){ return n==null?'—':(n+'%'); }
+  function numStr(n){ return n==null?'—':String(n); }
+  function _attLatestDate(){ let d=''; for(let i=0;i<ATT_STORE.length;i++){ const x=ATT_STORE[i].date||''; if(x>d) d=x; } return d; }
+  function attendanceRate(){ if(!ATT_STORE.length) return null; const ok=ATT_STORE.filter(a=>a.status==='present'||a.status==='retard').length; return Math.round(ok/ATT_STORE.length*100); }
+  function attByStatusLatest(status){ const d=_attLatestDate(); if(!d) return 0; return ATT_STORE.filter(a=>a.date===d&&a.status===status).length; }
+  function callsDoneLatest(){ const d=_attLatestDate(); if(!d) return 0; const s=new Set(); ATT_STORE.forEach(a=>{ if(a.date===d) s.add(a.cls); }); return s.size; }
+  function totalEncaisse(year){ year=year||state.year; return PAY_STORE.filter(p=>!p.year||p.year===year).reduce((s,p)=>s+(+p.amount||0),0); }
+  function studentsWithPayment(year){ year=year||state.year; const paid=new Set(); PAY_STORE.forEach(p=>{ if(!p.year||p.year===year) paid.add(p.stu); }); return paid; }
+  function recouvrementPct(year){ year=year||state.year; const studs=studentsOfYear(year); if(!studs.length) return null; const paid=studentsWithPayment(year); let n=0; studs.forEach(e=>{ if(paid.has(e.id)) n++; }); return Math.round(n/studs.length*100); }
+  function unpaidCount(year){ year=year||state.year; const studs=studentsOfYear(year); const paid=studentsWithPayment(year); return studs.filter(e=>!paid.has(e.id)).length; }
+  function schoolAverage(){ let sum=0,cnt=0; const pfx=state.year+'|'; for(const k in GRADES){ if(k.indexOf(pfx)!==0) continue; const data=GRADES[k]; for(const sid in data){ const m=moyenne(data[sid]); if(m!=null){ sum+=m; cnt++; } } } return cnt?sum/cnt:null; }
+  function gradesPendingCount(){ let n=0; const pfx=state.year+'|'; DB.program.forEach(pr=>{ let has=false; const key=pfx+pr.cls+'|'+pr.sub+'|'; for(const k in GRADES){ if(k.indexOf(key)===0){ has=true; break; } } if(!has) n++; }); return n; }
+  // ---------- Helpers PERIMETRE ENSEIGNANT ----------
+  // Tout ce qui suit ne considere QUE les classes/matieres reellement
+  // attribuees a l'enseignant (me.cls / me.subs), jamais l'etablissement entier.
+  // Classes attribuees (objets classe), limitees aux cycles actifs de l'ecole.
+  function teacherClasses(me){
+    if(!me||!Array.isArray(me.cls)) return [];
+    const cyc=activeCycles();
+    return me.cls.map(getCls).filter(c=>c&&cyc.includes(c.cycle));
+  }
+  // Matieres attribuees (objets matiere).
+  function teacherSubjects(me){
+    if(!me||!Array.isArray(me.subs)) return [];
+    return me.subs.map(getSub).filter(Boolean);
+  }
+  // Lignes de programme (classe+matiere) qui relevent de l'enseignant :
+  // la classe est dans me.cls ET la matiere dans me.subs.
+  function teacherProgram(me){
+    if(!me) return [];
+    const cls=new Set((me.cls||[])), subs=new Set((me.subs||[]));
+    const cyc=activeCycles();
+    return DB.program.filter(p=>{ if(!cls.has(p.cls)||!subs.has(p.sub)) return false; const c=getCls(p.cls); return c&&cyc.includes(c.cycle); });
+  }
+  // Saisies en attente pour l'enseignant : par ligne de programme (classe+matiere+
+  // periode du cycle), on compte celles sans aucune note enregistree.
+  function teacherPendingCount(me){
+    if(!me) return 0; let n=0; const pfx=state.year+'|';
+    teacherProgram(me).forEach(pr=>{
+      const c=getCls(pr.cls); if(!c) return;
+      const pers=periodList(cyclePeriodType(c.cycle));
+      pers.forEach(per=>{ const store=GRADES[pfx+pr.cls+'|'+pr.sub+'|'+per];
+        const has=store&&Object.keys(store).some(sid=>moyenne(store[sid])!=null);
+        if(!has) n++; });
+    });
+    return n;
+  }
+  // Moyenne calculee UNIQUEMENT sur les notes des eleves des classes de
+  // l'enseignant, pour ses matieres (toutes periodes du cycle). null si vide.
+  function teacherAverage(me){
+    if(!me) return null; let sum=0,cnt=0; const pfx=state.year+'|';
+    teacherProgram(me).forEach(pr=>{
+      const c=getCls(pr.cls); if(!c) return;
+      const studs=new Set(studentsInClass(pr.cls).map(e=>e.id));
+      const pers=periodList(cyclePeriodType(c.cycle));
+      pers.forEach(per=>{ const store=GRADES[pfx+pr.cls+'|'+pr.sub+'|'+per]; if(!store) return;
+        for(const sid in store){ if(!studs.has(sid)) continue; const m=moyenne(store[sid]); if(m!=null){ sum+=m; cnt++; } } });
+    });
+    return cnt?sum/cnt:null;
+  }
+  function periodsWithGrades(){ const pfx=state.year+'|'; const pers=new Set(); for(const k in GRADES){ if(k.indexOf(pfx)!==0) continue; if(Object.keys(GRADES[k]||{}).length){ const parts=k.split('|'); pers.add(parts[3]); } } return pers.size; }
+  // ---------- Helpers PERIMETRE ELEVE (espace Eleve / Parent) ----------
+  // Tout ce qui suit ne considere QUE l'eleve passe en argument (ses notes, sa
+  // presence, ses bulletins), jamais l'etablissement entier. null si aucune donnee.
+  // Matieres suivies par l'eleve = programme de sa classe de l'annee active.
+  function studentSubjects(e){ if(!e) return []; const cls=clsOfYear(e,state.year); return cls?DB.program.filter(p=>p.cls===cls):[]; }
+  // Moyenne generale de l'eleve : moyenne (ponderee par coef) de ses notes sur
+  // toutes les matieres/periodes enregistrees de sa classe (annee active).
+  function studentMoyenne(e){
+    if(!e) return null; const cls=clsOfYear(e,state.year); if(!cls) return null;
+    const coefOf={}; DB.program.filter(p=>p.cls===cls).forEach(p=>{ coefOf[p.sub]=(+p.coef||1); });
+    const pfx=state.year+'|'+cls+'|'; let sum=0,cnt=0;
+    for(const k in GRADES){ if(k.indexOf(pfx)!==0) continue; const cell=GRADES[k][e.id]; if(!cell) continue; const m=moyenne(cell); if(m==null) continue; const sub=k.split('|')[2]; const co=coefOf[sub]||1; sum+=m*co; cnt+=co; }
+    return cnt?sum/cnt:null;
+  }
+  // Taux de presence PROPRE a l'eleve (present+retard / total de ses releves).
+  function studentAttendanceRate(e){ if(!e) return null; const rows=ATT_STORE.filter(a=>a.stu===e.id); if(!rows.length) return null; const ok=rows.filter(a=>a.status==='present'||a.status==='retard').length; return Math.round(ok/rows.length*100); }
+  // Nombre de retards de l'eleve.
+  function studentLateCount(e){ if(!e) return 0; return ATT_STORE.filter(a=>a.stu===e.id&&a.status==='retard').length; }
+  // Nombre de periodes pour lesquelles l'eleve a au moins une note (bulletins dispo).
+  function studentPeriodsWithGrades(e){ if(!e) return 0; const cls=clsOfYear(e,state.year); if(!cls) return 0; const pfx=state.year+'|'+cls+'|'; const pers=new Set(); for(const k in GRADES){ if(k.indexOf(pfx)!==0) continue; if(GRADES[k][e.id]) pers.add(k.split('|')[3]); } return pers.size; }
+  // ---- Scolarite PROPRE a l'eleve : bareme annuel par cycle + calcul paye/du ----
+  // Bareme annuel (FCFA) aligne sur la grille affichee cote admin (schedules()).
+  const FEE_BAREME={
+    'Préscolaire':100000,'Primaire':100000,'Collège':120000,
+    'Lycée Moderne':180000,'Lycée Technique':180000,
+    'Cycle Industriel':220000,'Cycle Professionnel':200000
+  };
+  function cycleAnnualFee(cycle){ return FEE_BAREME[cycle]||120000; }
+  // Repartition en 3 tranches : 40% / 30% / 30% (la 3e absorbe l'arrondi).
+  function feeTranches(total){ total=+total||0; const t1=Math.round(total*0.4), t2=Math.round(total*0.3); return [t1,t2,Math.max(0,total-t1-t2)]; }
+  // Total deja paye par l'eleve pour l'annee (PAY_STORE, meme logique que totalEncaisse).
+  function studentPaid(e,year){ year=year||state.year; if(!e) return 0; return PAY_STORE.filter(p=>p.stu===e.id&&(!p.year||p.year===year)).reduce((s,p)=>s+(+p.amount||0),0); }
+  // Liste des recus/paiements de l'eleve, du plus recent au plus ancien.
+  function studentPayments(e,year){ year=year||state.year; if(!e) return []; return PAY_STORE.filter(p=>p.stu===e.id&&(!p.year||p.year===year)).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))); }
+  // Situation complete de scolarite de l'eleve pour l'annee active.
+  function studentFeeInfo(e,year){
+    year=year||state.year; if(!e) return null;
+    const clsId=clsOfYear(e,year); if(!clsId) return null;
+    const cls=getCls(clsId); if(!cls) return null;
+    const total=cycleAnnualFee(cls.cycle);
+    const paid=studentPaid(e,year);
+    const due=Math.max(0,total-paid);
+    return { cls, total, paid, due, tranches:feeTranches(total), pct: total?Math.min(100,Math.round(paid/total*100)):0 };
+  }
+  // Abrege un nom de cycle pour l'axe du diagramme (ex: "Cycle Industriel" -> "Industriel").
+  function cycleShort(c){ return String(c||'').replace('Cycle ','').replace('Lycee ','Lyc. ').replace('Lyc\u00e9e ','Lyc. ').replace('Pr\u00e9scolaire','Pr\u00e9sco.'); }
+  // Donnees REELLES du diagramme d'accueil, calculees a la volee pour l'annee
+  // active et l'ecole active (aucune valeur codee en dur).
+  //   kind='recettes' -> somme des paiements par cycle ;
+  //   sinon           -> effectif (nb d'eleves) par cycle.
+  function dashChartData(kind){
+    const year=state.year, cycles=activeCycles();
+    const map={}; cycles.forEach(c=>{ map[c]=0; });
+    if(kind==='recettes'){
+      PAY_STORE.forEach(p=>{ if(p.year&&p.year!==year) return; const st=DB.students.find(s=>s.id===p.stu); if(!st) return;
+        const en=enrollFor(st,year); const cl=en&&en.cls?getCls(en.cls):null; const cy=cl&&cl.cycle;
+        if(cy&&Object.prototype.hasOwnProperty.call(map,cy)) map[cy]+=(+p.amount||0); });
+    } else {
+      studentsOfYear(year).forEach(e=>{ const en=enrollFor(e,year); const cl=en&&en.cls?getCls(en.cls):null; const cy=cl&&cl.cycle;
+        if(cy&&Object.prototype.hasOwnProperty.call(map,cy)) map[cy]++; });
+    }
+    const keep=cycles.filter(c=>map[c]>0);
+    return { labels:keep.map(cycleShort), data:keep.map(c=>map[c]) };
+  }
   // ---------- UTILISATEURS, RÔLES & PERMISSIONS (RBAC par utilisateur) ----------
   const ROLE_LABELS={ admin:'Administration', teacher:'Enseignant', surveillant:'Surveillant', comptable:'Comptable', student:'Élève / Parent' };
   // Catalogue des permissions gérées
@@ -311,6 +627,20 @@
   const TT_SUBJ={M:['Math','brand'],F:['Franç.','rose'],P:['Phys.','sky'],A:['Atelier','emerald'],E:['EPS','amber'],H:['Hist-Géo','slate'],I:['Info','teal']};
   const TT_TEACH={M:'Mme Sarr',F:'Mme Fall',P:'M. Ndiaye',A:'M. Koné',E:'M. Koné',H:'Mme Fall',I:'M. Ndiaye'};
   const TT_STORE={};
+  // Persistance locale de l'emploi du temps (le backend ne stocke pas encore les
+  // grilles). On sauvegarde tout TT_STORE dans le navigateur : une grille videe
+  // puis recreee est ainsi conservee apres rechargement. Les ids de classe sont
+  // globalement uniques, une seule cle suffit.
+  let _ttLoaded=false;
+  function ttEnsureLoaded(){
+    if(_ttLoaded) return; _ttLoaded=true;
+    try{ if(typeof localStorage==='undefined') return; const raw=localStorage.getItem('xschool-tt'); if(!raw) return;
+      const o=JSON.parse(raw); if(o&&typeof o==='object'){ for(const k in o){ TT_STORE[k]=o[k]; } }
+    }catch(e){}
+  }
+  function persistTT(){
+    try{ if(typeof localStorage==='undefined') return; _ttLoaded=true; localStorage.setItem('xschool-tt', JSON.stringify(TT_STORE)); }catch(e){}
+  }
   // ---------- COMPTABILITÉ : encaissements ----------
   const PAY_MODES=[['especes','Espèces'],['momo','Mobile Money'],['virement','Virement bancaire'],['cheque','Chèque']];
   const payIsBank=m=>m==='virement'||m==='cheque';
@@ -353,7 +683,139 @@
     const base=[['M','F','P','A','E','H'],['M','F','P','A','E','I'],['P','M','F','A','','H'],['F','P','M','E','A','I'],['E','A','','M','F','P'],['H','I','A','F','P','M'],['A','E','M','','H','F'],['I','A','F','P','M',''],['','','','','','']];
     return base.map(r=>r.map((_,ci)=>r[(ci+seed)%6]));
   }
-  function ttGrid(){ const k=ttKey(); if(!TT_STORE[k]) TT_STORE[k]=ttDefault((state.ttIdx+(state.ttGroup==='B'?1:0))%6); return TT_STORE[k]; }
+  function ttGrid(){ ttEnsureLoaded(); const k=ttKey(); if(!TT_STORE[k]) TT_STORE[k]=ttDefault((state.ttIdx+(state.ttGroup==='B'?1:0))%6); return TT_STORE[k]; }
+  // ---- EMPLOI DU TEMPS v2 : piloté par les VRAIES données (classes / matières / enseignants) ----
+  // Grille d'une classe = 9 lignes (créneaux) x 6 colonnes (jours).
+  // Chaque cellule vaut '' (vide) ou un objet {sub:<idMatière>, teach:<idEnseignant>}.
+  function ttEmptyGrid(){ return Array.from({length:9},()=>Array.from({length:6},()=>'')); }
+  function ttClassGrid(clsId){ ttEnsureLoaded(); const k='cls:'+clsId; if(!TT_STORE[k]) TT_STORE[k]=ttEmptyGrid(); return TT_STORE[k]; }
+  // Couleur/nom d'une matière (via son domaine sci/litt/autre).
+  function ttSubColor(subId){ const s=getSub(subId); const d=s&&DOM[s.dom]; return d?d[1]:'slate'; }
+  function ttSubName(subId){ const s=getSub(subId); return s?s.n:'—'; }
+  // Nom court d'un enseignant (ex. « Mme Sarr »).
+  function ttTeacherShort(tId){ const t=DB.teachers.find(x=>x.id===tId); return t?(t.n||teacName(t)):''; }
+  // Matières proposées pour une classe : d'abord son programme, sinon toutes.
+  function ttSubjectsFor(clsId){
+    const prog=DB.program.filter(p=>p.cls===clsId).map(p=>p.sub);
+    const ids=prog.length?prog:DB.subjects.map(s=>s.id);
+    return ids.filter((v,i)=>ids.indexOf(v)===i);
+  }
+  // Enseignants proposés : ceux affectés à la classe d'abord, puis le reste de l'équipe.
+  function ttTeachersFor(clsId){
+    const assigned=DB.teachers.filter(t=>Array.isArray(t.cls)&&t.cls.includes(clsId));
+    const rest=DB.teachers.filter(t=>!assigned.includes(t));
+    return assigned.concat(rest);
+  }
+  // Enseignant intervenant pour une matiere dans une classe (id front, ex 't5').
+  // Priorite : enseignant affecte A LA FOIS a la classe ET a la matiere ; a defaut
+  // un enseignant qui enseigne cette matiere (meme non rattache a la classe).
+  // Sert a pre-remplir automatiquement le prof quand on choisit une matiere dans
+  // une case de l'emploi du temps. Renvoie '' si aucun enseignant ne convient.
+  function ttTeacherForSub(clsId, subId){
+    if(!subId) return '';
+    const teaches=t=>Array.isArray(t.subs)&&t.subs.includes(subId);
+    const inClass=t=>Array.isArray(t.cls)&&t.cls.includes(clsId);
+    let t=DB.teachers.find(x=>inClass(x)&&teaches(x));
+    if(!t) t=DB.teachers.find(x=>teaches(x));
+    return t?t.id:'';
+  }
+  // Conflit d'horaire : l'enseignant `teachId` est-il deja occupe dans une AUTRE
+  // classe au meme creneau (ri=ligne/heure, ci=colonne/jour) ? Renvoie l'id front
+  // de la classe en conflit, ou '' si libre. Compare avec les grilles persistees.
+  function ttFindConflict(clsId, ri, ci, teachId){
+    if(!teachId) return '';
+    for(let i=0;i<DB.classes.length;i++){ const c=DB.classes[i]; if(!c||c.id===clsId) continue;
+      const g=TT_STORE['cls:'+c.id]; if(!g||!g[ri]) continue;
+      const v=g[ri][ci];
+      if(v && typeof v==='object' && v.teach===teachId) return c.id;
+    }
+    return '';
+  }
+  // Tous les conflits d'horaire enseignant pour une grille de classe donnee.
+  // Renvoie [{ri,ci,teach,other}] (other = id front de la classe en conflit).
+  function ttGridConflicts(clsId, grid){
+    const out=[];
+    if(!Array.isArray(grid)) return out;
+    for(let ri=0;ri<grid.length;ri++){ const row=grid[ri]||[]; for(let ci=0;ci<row.length;ci++){
+      const v=row[ci]; if(!v||typeof v!=='object'||!v.teach) continue;
+      const other=ttFindConflict(clsId, ri, ci, v.teach);
+      if(other) out.push({ri:ri,ci:ci,teach:v.teach,other:other});
+    }}
+    return out;
+  }
+  // Carte des "trous" d'une grille (vide entouré de cours la même journée).
+  // true = case VIDE encadrée par au moins un cours plus tôt ET un cours plus
+  // tard dans la MEME colonne (journée). Les vides en début/fin de journée (avant
+  // le 1er cours ou après le dernier) ne comptent pas comme des trous.
+  function ttGapMap(grid){
+    const R=(grid&&grid.length)||0, C=(grid&&grid[0]&&grid[0].length)||0;
+    const map=Array.from({length:R},()=>Array.from({length:C},()=>false));
+    const filled=(r,c)=>{ const v=grid[r]&&grid[r][c]; return !!(v&&typeof v==='object'&&v.sub); };
+    for(let c=0;c<C;c++){
+      let first=-1,last=-1;
+      for(let r=0;r<R;r++){ if(filled(r,c)){ if(first<0) first=r; last=r; } }
+      if(first<0) continue;
+      for(let r=first+1;r<last;r++){ if(!filled(r,c)) map[r][c]=true; }
+    }
+    return map;
+  }
+  // Nombre total de trous dans une grille.
+  function ttGapCount(grid){ const m=ttGapMap(grid); let n=0; for(let r=0;r<m.length;r++) for(let c=0;c<m[r].length;c++) if(m[r][c]) n++; return n; }
+  // Vue consolidée (lecture seule) d'un enseignant, calculée à partir des grilles de classes.
+  // Cellule = '' ou {cls:<idClasse>, sub:<idMatière>}.
+  function ttTeacherAgg(tId){
+    const out=ttEmptyGrid();
+    DB.classes.forEach(c=>{
+      const g=TT_STORE['cls:'+c.id]; if(!g) return;
+      for(let r=0;r<9;r++) for(let ci=0;ci<6;ci++){
+        const v=g[r] && g[r][ci];
+        if(v && typeof v==='object' && v.teach===tId) out[r][ci]={cls:c.id,sub:v.sub};
+      }
+    });
+    return out;
+  }
+
+  /* ===================== POINTAGE ENSEIGNANT (branché sur l'emploi du temps) =====================
+   * Les heures PRÉVUES proviennent directement des grilles de classe (ttTeacherAgg) :
+   * chaque cellule occupée = 1 créneau de cours. La surveillance ne fait que pointer
+   * la présence du jour (présent / retard / absent) ; les heures RÉALISÉES en découlent.
+   * Aucune donnée codée en dur : tout est calculé à partir de l'emploi du temps réel.
+   */
+  const TT_SLOT_MIN=55; // durée réelle d'un créneau (info) — mais compté 1 HEURE PLEINE pour le pointage
+  // Règle métier : chaque séance de l'emploi du temps = 1 heure pleine (50/55 min comptées 1h).
+  function cellsToHours(n){ return (n||0); }
+  function fmtHours(v){ const m=Math.round((v||0)*60); return Math.floor(m/60)+'h'+String(m%60).padStart(2,'0'); }
+  // Nombre de créneaux occupés (toutes classes) d'un enseignant sur la semaine type.
+  function teacherWeekCells(tId){ const g=ttTeacherAgg(tId); let n=0; for(let r=0;r<9;r++) for(let c=0;c<6;c++){ if(g[r]&&g[r][c]) n++; } return n; }
+  // Créneaux occupés un jour donné (colonne 0=Lun … 5=Sam).
+  function teacherDayCells(tId,dayIdx){ const g=ttTeacherAgg(tId); let n=0; for(let r=0;r<9;r++){ if(g[r]&&g[r][dayIdx]) n++; } return n; }
+  function teacherWeekHours(tId){ return cellsToHours(teacherWeekCells(tId)); }
+  function teacherDayHours(tId,dayIdx){ return cellsToHours(teacherDayCells(tId,dayIdx)); }
+  function todayIso(){ return new Date().toISOString().slice(0,10); }
+  // Index colonne emploi du temps (Lun=0 … Sam=5) d'une date ISO ; dimanche => -1.
+  function ttDayIndex(iso){ const d=new Date(iso+'T00:00:00'); if(isNaN(d.getTime())) return -1; const w=d.getDay(); return w===0?-1:w-1; }
+  // Store de pointage : clé « tId|YYYY-MM-DD » -> 'retard' | 'absent' (présent = valeur par défaut, non stockée).
+  const TPT_STORE={}; let _tptLoaded=false;
+  function tptEnsureLoaded(){ if(_tptLoaded) return; _tptLoaded=true; try{ if(typeof localStorage==='undefined') return; const raw=localStorage.getItem('xschool-tpt'); if(raw){ const o=JSON.parse(raw); if(o&&typeof o==='object') for(const k in o) TPT_STORE[k]=o[k]; } }catch(e){} }
+  function tptPersist(){ try{ if(typeof localStorage==='undefined') return; _tptLoaded=true; localStorage.setItem('xschool-tpt', JSON.stringify(TPT_STORE)); }catch(e){} }
+  function tptStatus(tId,iso){ tptEnsureLoaded(); return TPT_STORE[tId+'|'+iso]||'present'; }
+  function tptSet(tId,iso,stt){ tptEnsureLoaded(); const k=tId+'|'+iso; if(stt==='present') delete TPT_STORE[k]; else TPT_STORE[k]=stt; tptPersist();
+    // Write-through backend : persiste le pointage cote serveur quand l'API est active.
+    if(apiOn()&&API.authenticated()){ const tid=_unpfx('t',tId); if(tid!=null){ try{ API.saveTeacherAttendance({ teacher_id:tid, date:iso, status:stt||'present' }).catch(function(){}); }catch(e){} } }
+  }
+  // Heures prévues sur une période = somme, jour par jour, des heures de l'emploi du temps.
+  function teacherPlannedHours(tId,startIso,endIso){
+    let h=0; const s=new Date(startIso+'T00:00:00'), e=new Date(endIso+'T00:00:00');
+    if(isNaN(s.getTime())||isNaN(e.getTime())||s>e) return 0;
+    for(let d=new Date(s); d<=e; d.setDate(d.getDate()+1)){ const w=d.getDay(); if(w===0) continue; h+=teacherDayHours(tId,w-1); }
+    return h;
+  }
+  // Pointage AUTOMATIQUE : la présence est déduite directement de l'emploi du temps.
+  // Chaque séance planifiée est considérée réalisée (1 séance = 1 heure pleine).
+  // Les heures réalisées sont donc toujours égales aux heures prévues.
+  function teacherRealizedHours(tId,startIso,endIso){
+    return teacherPlannedHours(tId,startIso,endIso);
+  }
 
   /* ===================== PONT API (data <-> backend) =====================
    * Non invasif : n'agit que si API.enabled(). Sinon le prototype reste
@@ -363,6 +825,45 @@
    * puis refletees dans les tableaux en memoire.
    */
   function apiOn(){ return (typeof API!=='undefined') && API.enabled(); }
+
+  // Charge-t-on des donnees STAFF via l'API ? Identique a apiOn() mais bloque
+  // EN PLUS l'espace eleve. Un compte eleve ne doit JAMAIS declencher un appel
+  // reserve au staff (/grades, /attendance, /payments, /discipline...) : cote
+  // serveur ces endpoints sont proteges par role_required -> 403 + une ligne
+  // d'audit "acces_refuse" parasite dans le journal de securite. Les donnees
+  // de l'eleve (fiche, classe, notes, presences, paiements) arrivent toutes via
+  // l'endpoint dedie /me/overview (hydrateStudentOverview). On garde donc tout
+  // chargement staff derriere ce verrou : apiOn() ET role != 'student'.
+  function staffApiOn(){ return apiOn() && (typeof state==='undefined' || state.role!=='student'); }
+
+  // ---------- MODE DONNEES REELLES : purge des donnees de demonstration --------
+  // En mode connecte au backend (apiOn), l'application ne doit afficher QUE les
+  // vraies donnees de la base. On vide donc tous les jeux de demonstration en
+  // memoire AVANT le 1er rendu / apres connexion : les listes sont ensuite
+  // remplies par l'hydratation serveur. Si un endpoint ne renvoie rien, la
+  // rubrique reste vide (condition reelle), au lieu de montrer des exemples.
+  // SCHOOLS n'est PAS vide ici : la liste publique des etablissements est geree
+  // a part (remplacee par la vraie liste active du serveur).
+  let _demoWiped=false;
+  function wipeDemoData(){
+    if(_demoWiped) return; _demoWiped=true;
+    try{
+      DB.classes.length=0; DB.subjects.length=0; DB.teachers.length=0;
+      DB.students.length=0; DB.program.length=0;
+      for(const k in GRADES){ delete GRADES[k]; }
+      if(Array.isArray(USERS)) USERS.length=0;
+      if(Array.isArray(LOGS)) LOGS.length=0;
+      if(Array.isArray(PAY_STORE)) PAY_STORE.length=0;
+      if(Array.isArray(DISC_STORE)) DISC_STORE.length=0;
+      if(Array.isArray(ATT_STORE)) ATT_STORE.length=0;
+      // Vider aussi les alertes de demonstration (al1/al2/al3) : en mode reel,
+      // le centre d'alertes et la banniere ne doivent afficher QUE les vraies
+      // alertes (generees par les tests / le serveur), aucun faux compteur.
+      if(Array.isArray(ALERTS)) ALERTS.length=0;
+    }catch(e){}
+  }
+  // Purge immediate si on demarre deja en mode API (avant tout rendu).
+  if(apiOn()){ wipeDemoData(); }
 
   // ---------- CARTES SCOLAIRES (donnees par classe, hors-ligne + API) ----------
   // Annee scolaire courante (bascule en aout), format AAAA-AAAA.
@@ -375,8 +876,8 @@
   function classCardsData(clsId){
     const cls=getCls(clsId), sc=activeSchool(), cfg=schoolCfg();
     const slug=(sc&&(sc.slug||sc.code))?String(sc.slug||sc.code):'xs';
-    const year=currentSchoolYear();
-    const studs=DB.students.filter(e=>e.cls===clsId)
+    const year=state.year||currentSchoolYear();
+    const studs=studentsInClass(clsId,year)
       .sort((a,b)=>(stuName(a)).localeCompare(stuName(b),'fr'));
     const cards=studs.map(e=>{
       const enr=enrollFor(e,year);
@@ -401,25 +902,90 @@
   // Version API : recupere les donnees aupres du backend (meme forme).
   function classCardsApi(clsId){
     const c=getCls(clsId); const apiId=(c&&c.apiId!=null)?c.apiId:_unpfx('c',clsId);
+    // Securite : une classe locale/demo (sans identifiant serveur) est traitee
+    // hors-ligne au lieu d'interroger le backend (sinon 404 "introuvable").
+    if(apiId==null) return Promise.resolve(classCardsData(clsId));
     return API.classCards(apiId);
   }
 
   // role backend -> cle de role frontend (ROLES)
-  const API_ROLE_MAP={ superadmin:'super', admin:'admin', teacher:'teacher', supervisor:'surveillant', student:'student' };
+  const API_ROLE_MAP={ superadmin:'super', admin:'admin', teacher:'teacher', supervisor:'surveillant', comptable:'comptable', student:'student' };
   function mapApiRole(r){ return API_ROLE_MAP[r]||'admin'; }
+  // cle de role frontend -> role backend (inverse de API_ROLE_MAP)
+  const FRONT_ROLE_MAP={ super:'superadmin', admin:'admin', teacher:'teacher', surveillant:'supervisor', comptable:'comptable', student:'student' };
+  function roleToApi(r){ return FRONT_ROLE_MAP[r]||'teacher'; }
 
   function mapApiSchool(s){
-    return { id:'sc'+s.id, apiId:s.id, name:s.name||('École '+s.id), code:(s.slug||('SC'+s.id)).toUpperCase(),
+    const o={ id:'sc'+s.id, apiId:s.id, name:s.name||('École '+s.id), code:(s.slug||('SC'+s.id)).toUpperCase(),
              slug:s.slug||('sc'+s.id), active:s.active!==false, cycles:CYCLE_NAMES.slice() };
+    // Si le backend fournit la config d'identite (endpoint /schools/current),
+    // on la mappe vers le cfg attendu par le frontend (identite + bulletins).
+    const c=s.config;
+    if(c){
+      o.cfg={ phone:c.phone||'', email:c.email||'', address:c.address||'', director:c.director||'', logo:c.logo||'',
+              gradeMax:(c.grade_max!=null?c.grade_max:20), passMark:(c.pass_mark!=null?c.pass_mark:10),
+              avgMode:c.avg_mode||'weighted', avgDecimals:(c.avg_decimals!=null?c.avg_decimals:2),
+              rankVisible:c.rank_visible!==false, rankTies:c.rank_ties!==false, optFacCoef1:!!c.opt_fac_coef1,
+              bulletinTpl:c.bulletin_tpl||'officiel', bulletinFmt:c.bulletin_fmt||'vrac',
+              bulletinFmtByCycle:c.bulletin_fmt_by_cycle||{}, periods:c.periods||{}, teacherGrades:c.teacher_grades||{}, deadlines:c.deadlines||{}, mentions:(c.mentions&&c.mentions.length)?c.mentions:null,
+              sms:!!c.sms, whatsapp:!!c.whatsapp, sender:c.sender||'XSCHOOL' };
+      if(!o.cfg.mentions) delete o.cfg.mentions; // laisse schoolCfg() poser les defauts
+    }
+    return o;
   }
   function mapApiClass(c){
-    return { id:'c'+c.id, apiId:c.id, cycle:c.cycle||'', name:c.name||'', grp:c.grp||'', spec:c.spec||'' };
+    const tby={}; const raw=(c&&c.titulaires_by_year)||{};
+    for(const y in raw){ if(!Object.prototype.hasOwnProperty.call(raw,y)) continue; const fid=_pfxId('t', raw[y]); if(fid) tby[y]=fid; }
+    return { id:'c'+c.id, apiId:c.id, cycle:c.cycle||'', name:c.name||'', grp:c.grp||'', spec:c.spec||'', titulaire:_pfxId('t', c.titulaire_id), titulaireByYear:tby };
+  }
+  // Titulaire (id front enseignant, ex 't5') d'une classe pour une annee donnee.
+  // On privilegie l'affectation specifique a l'annee ; a defaut on retombe sur
+  // le titulaire "par defaut" de la classe (retro-compat), sinon chaine vide.
+  function classTitulaireFor(cls, year){
+    year=year||(typeof state!=='undefined'&&state.year)||'';
+    if(cls){
+      if(cls.titulaireByYear && year && cls.titulaireByYear[year]) return cls.titulaireByYear[year];
+      if(cls.titulaire) return cls.titulaire;
+    }
+    return '';
   }
   // retrouve l'id serveur d'une classe front (champ apiId, ou prefixe 'c')
   function classApiId(cls){ if(!cls) return null; if(cls.apiId!=null) return cls.apiId; const m=/^c(\d+)$/.exec(cls.id||''); return m?+m[1]:null; }
 
   // Remplace le contenu d'un tableau EN PLACE (preserve les references globales).
   function replaceArray(arr,items){ arr.length=0; for(let i=0;i<items.length;i++) arr.push(items[i]); return arr; }
+  // Fusion NON destructive : conserve les entrees existantes (donnees fictives/demo)
+  // et ajoute seulement les items dont la cle n'est pas deja presente. Permet
+  // d'afficher les vraies donnees de la base TOUT EN laissant la demo sur toutes
+  // les pages (et de ne jamais vider une liste si l'API renvoie vide).
+  function mergeArray(arr,items,keyFn){
+    keyFn=keyFn||function(x){ return x&&x.id; };
+    const seen=new Set();
+    for(let i=0;i<arr.length;i++){ const k=keyFn(arr[i]); if(k!=null) seen.add(k); }
+    for(let i=0;i<items.length;i++){ const it=items[i]; const k=keyFn(it);
+      if(k!=null&&seen.has(k)) continue; if(k!=null) seen.add(k); arr.push(it); }
+    return arr;
+  }
+
+  // Hydrate la liste PUBLIQUE des etablissements AVANT la connexion (ecran tenant).
+  // Best-effort : en mode API, on remplace les ecoles de demo par la vraie liste
+  // active renvoyee par le backend public (GET /auth/schools), ce qui fait
+  // apparaitre immediatement toute ecole creee par le superadmin. En cas d'echec
+  // (hors-ligne, API absente, liste vide) on conserve les ecoles de demo.
+  async function hydratePublicSchools(){
+    if(!apiOn()) return false;
+    try{
+      const r=await API.publicSchools(); const items=(r&&r.items)||[];
+      // Mode donnees reelles : on REMPLACE la liste de demo par la vraie liste
+      // active du serveur, meme si elle est vide (aucune ecole cote serveur =
+      // ecran de selection vide, condition reelle). On ne garde la demo que si
+      // l'appel echoue vraiment (hors-ligne / API absente).
+      replaceArray(SCHOOLS, items.map(mapApiSchool));
+      if(!SCHOOLS.find(s=>s.id===state.schoolId) && SCHOOLS.length) state.schoolId=SCHOOLS[0].id;
+      return true;
+    }catch(e){ /* echec reel -> on garde la demo pour ne pas bloquer la connexion */ }
+    return false;
+  }
 
   // Hydrate les donnees depuis l'API (best-effort). A appeler avant le 1er rendu.
   async function hydrateFromApi(){
@@ -430,22 +996,84 @@
     const role=u?mapApiRole(u.role):'admin';
     if(role==='super'){
       try{ const r=await API.listSchools(); const items=(r&&r.items)||[];
-        if(items.length){ replaceArray(SCHOOLS, items.map(mapApiSchool)); if(!SCHOOLS.find(s=>s.id===state.schoolId)) state.schoolId=SCHOOLS[0].id; } }
+        replaceArray(SCHOOLS, items.map(mapApiSchool)); if(SCHOOLS.length && !SCHOOLS.find(s=>s.id===state.schoolId)) state.schoolId=SCHOOLS[0].id; }
       catch(e){ if(typeof toast==='function') toast('Établissements : '+(e.message||'indisponibles')); }
+    } else {
+      // admin / enseignant / surveillant / eleve : on affiche l'etablissement du
+      // compte connecte ET on laisse les ecoles de demo presentes (non destructif).
+      try{ const r=await API.currentSchool(); const school=r&&r.school;
+        if(school){ const real=mapApiSchool(school);
+          const i=SCHOOLS.findIndex(s=>s.id===real.id);
+          if(i>=0) SCHOOLS[i]=real; else SCHOOLS.unshift(real);
+          state.schoolId=real.id; } }
+      catch(e){ if(typeof toast==='function') toast('Établissement : '+(e.message||'indisponible')); }
     }
+    // ESPACE ELEVE : les listes de reference (/classes, /students, /grades...)
+    // sont reservees au STAFF (403 pour un eleve). En mode connecte la demo est
+    // purgee -> tous les menus eleve etaient vides. On hydrate donc ici les
+    // MEMES structures memoire (sa fiche, sa classe, son programme, ses notes,
+    // presences et paiements) via l'endpoint dedie /me/overview.
+    if(role==='student'){ await hydrateStudentOverview(); return true; }
     // Donnees de reference (best-effort : une liste indisponible n'empeche pas les autres).
     await _hydrateList(()=>API.listClasses(),  DB.classes,   mapApiClass,   'Classes');
     await _hydrateList(()=>API.listSubjects(), DB.subjects,  mapApiSubject, 'Matières');
     await _hydrateList(()=>API.listTeachers(), DB.teachers,  mapApiTeacher, 'Enseignants');
     await _hydrateList(()=>API.listStudents(), DB.students,  mapApiStudent, 'Élèves');
-    await _hydrateList(()=>API.listPrograms(), DB.program,   mapApiProgram, 'Programme');
+    await _hydrateList(()=>API.listPrograms(), DB.program,   mapApiProgram, 'Programme', function(p){ return p.cls+'|'+p.sub; });
     return true;
   }
 
-  // Charge une liste API dans un tableau en memoire (remplacement en place).
-  // 403 = role sans acces a cette ressource : on ignore silencieusement.
-  async function _hydrateList(call, arr, mapper, label){
-    try{ const r=await call(); const items=(r&&r.items)||[]; replaceArray(arr, items.map(mapper)); return true; }
+  // ESPACE ELEVE : hydrate les structures memoire a partir de /me/overview.
+  // Tout est scope a l'eleve connecte (sa fiche, sa classe, son programme, ses
+  // notes/presences/paiements) et alimente EXACTEMENT les memes stores que les
+  // vues lisent deja (DB.students/classes/subjects/program, GRADES, ATT_STORE,
+  // PAY_STORE). Non destructif : fusion, jamais d'ecrasement d'autres entrees.
+  async function hydrateStudentOverview(){
+    if(!apiOn()||!API.authenticated()) return false;
+    let r;
+    try{ r=await API.overview(); }
+    catch(e){
+      // 403 = compte non lie a une fiche eleve -> espace vide (pas de demo).
+      if(e&&e.status!==403&&typeof toast==='function') toast('Mes données : '+(e.message||'indisponibles'));
+      return false;
+    }
+    if(!r) return false;
+    // Fiche eleve + classe(s) + matieres + programme.
+    if(r.student){ mergeArray(DB.students, [mapApiStudent(r.student)]); }
+    if(Array.isArray(r.classes)){ mergeArray(DB.classes, r.classes.map(mapApiClass)); }
+    if(Array.isArray(r.subjects)){ mergeArray(DB.subjects, r.subjects.map(mapApiSubject)); }
+    if(Array.isArray(r.programs)){ mergeArray(DB.program, r.programs.map(mapApiProgram), function(p){ return p.cls+'|'+p.sub; }); }
+    // Notes : cle year|cls|sub|period -> { stuId:{i,d,c,_gid} } (meme format que
+    // hydrateGradesApi). On garde l'annee PROPRE de chaque note (pas state.year).
+    if(Array.isArray(r.grades)){
+      r.grades.forEach(function(g){
+        const key=(g.year||'')+'|c'+g.class_id+'|s'+g.subject_id+'|'+(g.period||'');
+        const store=GRADES[key]||(GRADES[key]={});
+        const cell=_cellFromDetail(g.detail);
+        store['e'+g.student_id]={ i:cell.i||'', d:cell.d||'', c:cell.c||'', _gid:g.id };
+      });
+    }
+    // Presences + paiements (memes mappeurs que les hydratations STAFF).
+    if(Array.isArray(r.attendance)){
+      r.attendance.forEach(function(a){ const m=mapApiAttendance(a);
+        const j=ATT_STORE.findIndex(function(x){ return x.stu===m.stu&&x.cls===m.cls&&x.date===m.date; });
+        if(j>=0) ATT_STORE[j]=m; else ATT_STORE.push(m); });
+    }
+    if(Array.isArray(r.payments)){ mergeArray(PAY_STORE, r.payments.map(mapApiPayment)); }
+    return true;
+  }
+
+  // Charge une liste API dans un tableau en memoire. FUSION non destructive :
+  // les vraies donnees s'ajoutent aux donnees fictives deja presentes, et une
+  // liste API vide ne vide jamais la demo. 403 = role sans acces -> ignore.
+  async function _hydrateList(call, arr, mapper, label, keyFn){
+    try{ const r=await call(); const items=(r&&r.items)||[];
+      // Mode API reel : on REMPLACE les donnees de demo par les vraies (meme si
+      // la liste est vide). La fusion avec la demo laissait des entrees fictives
+      // (ex. classe 'c1') dont l'id pointe vers une AUTRE ecole cote serveur, ce
+      // qui declenchait des 404 "introuvable" (cartes scolaires, feuilles, etc.).
+      replaceArray(arr, items.map(mapper));
+      return true; }
     catch(e){ if(e && e.status!==403 && typeof toast==='function') toast(label+' : '+(e.message||'indisponibles')); return false; }
   }
 
@@ -465,10 +1093,58 @@
     const id=classApiId(cls); if(id==null) throw new Error('Classe sans identifiant serveur');
     await API.deleteClass(id); const i=DB.classes.indexOf(cls); if(i>=0) DB.classes.splice(i,1); return true;
   }
+  // Affecte / retire le titulaire (prof principal) d'une classe cote serveur,
+  // puis reflete localement. `titFrontId` = id front enseignant ('t5') ou ''.
+  // `year` (optionnel) scope l'affectation a une annee scolaire ; sans annee,
+  // on met a jour le titulaire "par defaut" de la classe.
+  async function setClassTitulaireApi(cls, titFrontId, year){
+    const id=classApiId(cls); if(id==null) throw new Error('Classe sans identifiant serveur');
+    const tid=titFrontId?_unpfx('t', titFrontId):null;
+    const payload={ titulaire_id:tid }; if(year) payload.year=year;
+    const r=await API.updateClass(id, payload);
+    if(r&&r.klass){ Object.assign(cls, mapApiClass(r.klass)); } return cls;
+  }
   // Cree un etablissement (superadmin) puis l'ajoute a SCHOOLS.
   async function createSchoolApi(payload){
     const r=await API.createSchool(payload); const s=r&&r.school; const obj=s?mapApiSchool(s):null;
     if(obj) SCHOOLS.push(obj); return obj;
+  }
+  // Cree un administrateur pour une ecole existante (superadmin), puis l'ajoute
+  // a USERS. `schoolId` = id front ('sc3'). payload: {full_name,email,login?,password}.
+  async function createSchoolAdminApi(schoolId, payload){
+    const sc=SCHOOLS.find(s=>s.id===schoolId); const apiId=(sc&&sc.apiId!=null)?sc.apiId:_unpfx('sc',schoolId);
+    if(apiId==null) throw new Error('\u00c9cole sans identifiant serveur');
+    const r=await API.createSchoolAdmin(apiId, payload); const u=r&&r.admin; const obj=u?mapApiUser(u):null;
+    if(obj) USERS.push(obj); return obj;
+  }
+  // id serveur d'un compte front (champ apiId, ou prefixe 'u').
+  function userApiId(u){ if(!u) return null; if(u.apiId!=null) return u.apiId; return _unpfx('u', u.id); }
+  // Cree un compte (avec mot de passe) cote serveur, puis l'ajoute a USERS.
+  // `front` : { name, email, password, role(front), login? }. `schoolId` front
+  // optionnel (le superadmin doit le preciser ; l'admin est confine cote serveur).
+  async function createUserApi(front, schoolId){
+    const payload={ full_name:front.name||'', email:(front.email||'').toLowerCase(),
+                    password:front.password||'', role:roleToApi(front.role||'teacher') };
+    if(front.login) payload.login=String(front.login).toLowerCase();
+    // Lien explicite compte -> fiche (enseignant / eleve). On convertit l'id
+    // front ('t5' / 'e3') en identifiant serveur attendu par le backend.
+    if(front.personFrontId){
+      if(front.role==='teacher'){ const t=DB.teachers.find(x=>x.id===front.personFrontId); const tid=t?teacherApiId(t):null; if(tid!=null) payload.teacher_id=tid; }
+      else if(front.role==='student'){ const s=DB.students.find(x=>x.id===front.personFrontId); const sid2=s?studentApiId(s):null; if(sid2!=null) payload.student_id=sid2; }
+    }
+    if(schoolId && schoolId!=='all'){ const sc=SCHOOLS.find(s=>s.id===schoolId); const apiId=(sc&&sc.apiId!=null)?sc.apiId:_unpfx('sc',schoolId); if(apiId!=null) payload.school_id=apiId; }
+    const r=await API.createUser(payload); const u=r&&r.user; const obj=u?mapApiUser(u):null;
+    if(obj) USERS.push(obj); return obj;
+  }
+  // Active/desactive un compte cote serveur, puis reflete localement.
+  async function setUserActiveApi(u, active){
+    const id=userApiId(u); if(id==null) throw new Error('Compte sans identifiant serveur');
+    const r=await API.updateUser(id, { active:!!active }); if(r&&r.user) u.active=r.user.active!==false; return u;
+  }
+  // Supprime un compte cote serveur, puis localement.
+  async function deleteUserApi(u){
+    const id=userApiId(u); if(id==null) throw new Error('Compte sans identifiant serveur');
+    await API.deleteUser(id); const i=USERS.indexOf(u); if(i>=0) USERS.splice(i,1); return true;
   }
 
   /* ---------- Mappeurs backend -> prototype (ids prefixes, champs renommes) ---------- */
@@ -605,7 +1281,8 @@
     try{
       const r=await API.listGrades({ class_id:cid, subject_id:sid, period:per, year:state.year });
       const items=(r&&r.items)||[]; const store=gGet(cls,sub,per);
-      for(const k in store){ if(Object.prototype.hasOwnProperty.call(store,k)) delete store[k]; }
+      // Non destructif : on superpose les vraies notes sans effacer les cellules
+      // fictives des eleves non renvoyes par l'API (on laisse la demo visible).
       items.forEach(g=>{ const cell=_cellFromDetail(g.detail);
         store['e'+g.student_id]={ i:cell.i||'', d:cell.d||'', c:cell.c||'', _gid:g.id }; });
       return true;
@@ -634,6 +1311,28 @@
     const r=await API.saveGrades({ items:items }); return (r&&r.items)||[];
   }
 
+  // Import / export Excel des notes (cote enseignant/admin).
+  // Telecharge le modele .xlsx (noms des eleves de la classe + notes existantes)
+  // pour la (classe, matiere, periode, annee courante). Renvoie
+  // { filename, mime, data_b64, count } ; le front construit le fichier a partir
+  // de data_b64 (base64) et le propose au telechargement.
+  async function gradesTemplateApi(cls, sub, per){
+    const cid=_unpfx('c',cls), sid=_unpfx('s',sub);
+    if(cid==null||sid==null) throw new Error('Classe/matière sans identifiant serveur');
+    return await API.gradesTemplate({ class_id:cid, subject_id:sid, year:state.year, period:per });
+  }
+  // Re-televerse un modele rempli (base64) et met a jour le store GRADES local
+  // avec les notes enregistrees cote serveur. Renvoie { saved, skipped }.
+  async function gradesImportApi(cls, sub, per, dataB64){
+    const cid=_unpfx('c',cls), sid=_unpfx('s',sub);
+    if(cid==null||sid==null) throw new Error('Classe/matière sans identifiant serveur');
+    const r=await API.gradesImport({ class_id:cid, subject_id:sid, year:state.year, period:per, data_b64:dataB64 });
+    const items=(r&&r.items)||[]; const store=gGet(cls,sub,per);
+    items.forEach(g=>{ const cell=_cellFromDetail(g.detail);
+      store['e'+g.student_id]={ i:cell.i||'', d:cell.d||'', c:cell.c||'', _gid:g.id }; });
+    return { saved:(r&&r.saved)||items.length, skipped:(r&&r.skipped)||0 };
+  }
+
   /* ---------- Write-through : APPEL / PRESENCES ---------- */
   function mapApiAttendance(a){
     return { id:'a'+a.id, apiId:a.id, stu:'e'+a.student_id,
@@ -643,8 +1342,11 @@
     if(!apiOn()||!API.authenticated()) return false;
     const p={}; if(cls) p.class_id=_unpfx('c',cls); if(date) p.date=date;
     try{ const r=await API.listAttendance(p); const items=(r&&r.items)||[];
-      for(let i=ATT_STORE.length-1;i>=0;i--){ const a=ATT_STORE[i]; if((!cls||a.cls===cls)&&(!date||a.date===date)) ATT_STORE.splice(i,1); }
-      items.forEach(it=>ATT_STORE.push(mapApiAttendance(it))); return true; }
+      // Non destructif : on superpose les vraies presences (meme eleve/classe/date)
+      // sans supprimer les entrees fictives existantes (la demo reste visible).
+      items.forEach(it=>{ const m=mapApiAttendance(it);
+        const j=ATT_STORE.findIndex(x=>x.stu===m.stu&&x.cls===m.cls&&x.date===m.date);
+        if(j>=0) ATT_STORE[j]=m; else ATT_STORE.push(m); }); return true; }
     catch(e){ if(e&&e.status!==403&&typeof toast==='function') toast('Présences : '+(e.message||'indisponibles')); return false; }
   }
   async function listAttendanceApi(params){
@@ -665,6 +1367,22 @@
   }
   async function deleteAttendanceApi(id){ await API.deleteAttendance(id); return true; }
 
+  /* ---------- Write-through : POINTAGE ENSEIGNANTS ---------- */
+  // Charge le pointage enseignant depuis l'API sur une plage [from,to] et
+  // remplit TPT_STORE (cle « t<apiId>|YYYY-MM-DD »). Non destructif : superpose
+  // les statuts serveur sur l'existant local.
+  async function hydrateTeacherAttendanceApi(from, to){
+    if(!apiOn()||!API.authenticated()) return false;
+    tptEnsureLoaded();
+    const p={}; if(from) p.from=from; if(to) p.to=to;
+    try{ const r=await API.listTeacherAttendance(p); const items=(r&&r.items)||[];
+      items.forEach(it=>{ const k='t'+it.teacher_id+'|'+(it.date||'');
+        const stt=it.status||'present';
+        if(stt==='present') delete TPT_STORE[k]; else TPT_STORE[k]=stt; });
+      tptPersist(); return true; }
+    catch(e){ if(e&&e.status!==403&&typeof toast==='function') toast('Pointage : '+(e.message||'indisponible')); return false; }
+  }
+
   /* ---------- Write-through : DISCIPLINE ---------- */
   function mapApiDiscipline(x){
     return { id:'d'+x.id, apiId:x.id, stu:'e'+x.student_id, date:x.date||'',
@@ -674,7 +1392,7 @@
   async function hydrateDisciplineApi(){
     if(!apiOn()||!API.authenticated()) return false;
     try{ const r=await API.listDiscipline(null); const items=(r&&r.items)||[];
-      replaceArray(DISC_STORE, items.map(mapApiDiscipline)); return true; }
+      mergeArray(DISC_STORE, items.map(mapApiDiscipline)); return true; }
     catch(e){ if(e&&e.status!==403&&typeof toast==='function') toast('Discipline : '+(e.message||'indisponible')); return false; }
   }
   async function listDisciplineApi(stuFrontId){
@@ -700,7 +1418,7 @@
   async function hydratePaymentsApi(params){
     if(!apiOn()||!API.authenticated()) return false;
     const p={}; if(params){ if(params.student) p.student_id=_unpfx('e',params.student); if(params.year) p.year=params.year; }
-    try{ const r=await API.listPayments(p); const items=(r&&r.items)||[]; replaceArray(PAY_STORE, items.map(mapApiPayment)); return true; }
+    try{ const r=await API.listPayments(p); const items=(r&&r.items)||[]; mergeArray(PAY_STORE, items.map(mapApiPayment)); return true; }
     catch(e){ if(e&&e.status!==403&&typeof toast==='function') toast('Paiements : '+(e.message||'indisponibles')); return false; }
   }
   async function createPaymentApi(front){
@@ -718,15 +1436,73 @@
     if(isNaN(d.getTime())) return String(iso).slice(0,16).replace('T',' ');
     const p=n=>String(n).padStart(2,'0');
     return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+  // Correspondance code d'action backend -> libelle FR + niveau d'affichage.
+  const _LOG_LABELS={
+    login:['Connexion','ok'], login_echec:['Échec de connexion','error'],
+    alerte_pic_echecs:['Pic d\'échecs de connexion','error'],
+    change_password:['Changement de mot de passe','warn'],
+    save_grades:['Notes enregistrées','ok'], delete_grade:['Note supprimée','warn'],
+    save_attendance:['Appel enregistré','ok'], delete_attendance:['Appel supprimé','warn'],
+    create_class:['Classe créée','ok'], delete_class:['Classe supprimée','warn'],
+    create_subject:['Matière créée','ok'], update_subject:['Matière modifiée','ok'], delete_subject:['Matière supprimée','warn'],
+    save_program:['Programme enregistré','ok'], update_program:['Programme modifié','ok'], delete_program:['Programme supprimé','warn'],
+    create_student:['Élève créé','ok'], update_student:['Élève modifié','ok'], delete_student:['Élève supprimé','warn'],
+    save_enrollment:['Inscription enregistrée','ok'],
+    create_teacher:['Enseignant créé','ok'], update_teacher:['Enseignant modifié','ok'], delete_teacher:['Enseignant supprimé','warn'],
+    create_discipline:['Incident disciplinaire','warn'], delete_discipline:['Incident supprimé','warn'],
+    create_payment:['Paiement enregistré','ok'], delete_payment:['Paiement supprimé','warn'],
+    update_config:['Réglages établissement modifiés','ok'],
+    compte_actif:['Compte activé','ok'], compte_desactive:['Compte désactivé','warn'], compte_supprime:['Compte supprimé','warn']
+  };
+  function _logLabel(code){ const m=_LOG_LABELS[code]; return m?m[0]:(code||'Action'); }
+  function _logLevel(code){ const m=_LOG_LABELS[code]; return m?m[1]:'info'; }
   function mapApiLog(a){
+    const code=a.action||'';
     return { id:'lg'+a.id, apiId:a.id, when:_fmtWhen(a.created_at),
              school:(a.school_id!=null?'sc'+a.school_id:'—'),
              user:(a.user_id!=null?('#'+a.user_id):'Système'), role:'—',
-             action:a.action||'', detail:a.detail||'', ip:a.ip||'', level:'ok' };
+             action:_logLabel(code), code:code, detail:a.detail||'', ip:a.ip||'', level:_logLevel(code) };
   }
   async function hydrateLogsApi(limit){
     if(!apiOn()||!API.authenticated()) return false;
     try{ const r=await API.listLogs(limit?{ limit:limit }:null); const items=(r&&r.items)||[];
-      replaceArray(LOGS, items.map(mapApiLog)); return true; }
+      mergeArray(LOGS, items.map(mapApiLog)); return true; }
     catch(e){ if(e&&e.status!==403&&typeof toast==='function') toast('Journal : '+(e.message||'indisponibles')); return false; }
+  }
+
+  // ---- Supervision : stats de connexion + comptage des comptes (serveur) ----
+  // Resultats bruts de l'API, consommes par la vue "logs" (admin.js).
+  let CONN_STATS=null;  // { jours, global:{...}, etablissements:[...] }
+  let USER_STATS=null;  // { total, actifs, inactifs, global:{<role>:n}, etablissements:[...] }
+  async function hydrateConnStatsApi(jours){
+    if(!apiOn()||!API.authenticated()) return false;
+    try{ CONN_STATS=await API.statsConnexions(jours?{ jours:jours }:null); return true; }
+    catch(e){ if(e&&e.status!==403&&typeof toast==='function') toast('Stats connexions : '+(e.message||'indisponibles')); return false; }
+  }
+  async function hydrateUserStatsApi(){
+    if(!apiOn()||!API.authenticated()) return false;
+    try{ USER_STATS=await API.statsUsers(); return true; }
+    catch(e){ if(e&&e.status!==403&&typeof toast==='function') toast('Stats utilisateurs : '+(e.message||'indisponibles')); return false; }
+  }
+
+  // backend user -> forme front (USERS). schoolId prefixe 'sc' pour coller aux vues.
+  function mapApiUser(u){
+    return { id:'u'+u.id, apiId:u.id, name:(u.full_name||u.email||('#'+u.id)),
+             email:u.email||'', login:u.login||'', role:mapApiRole(u.role),
+             active:u.active!==false, status:'active',
+             schoolId:(u.school_id!=null?'sc'+u.school_id:''), perms:{},
+             teacherId:(u.teacher_id!=null?('t'+u.teacher_id):undefined),
+             studentId:(u.student_id!=null?('e'+u.student_id):undefined) };
+  }
+  // Charge les comptes depuis l'API. `schoolId` = id front ('sc3') ou 'all'/'' :
+  //   - 'all'/'' -> tous les etablissements (superadmin) ;
+  //   - 'scN'    -> seulement cette ecole.
+  // Pour un admin d'ecole, le backend confine de toute facon a son ecole.
+  async function hydrateUsersApi(schoolId){
+    if(!apiOn()||!API.authenticated()) return false;
+    let params=null;
+    if(schoolId && schoolId!=='all'){ const sc=SCHOOLS.find(s=>s.id===schoolId); const apiId=(sc&&sc.apiId!=null)?sc.apiId:_unpfx('sc',schoolId); if(apiId!=null) params={ school_id:apiId }; }
+    try{ const r=await API.listUsers(params); const items=(r&&r.items)||[];
+      mergeArray(USERS, items.map(mapApiUser)); return true; }
+    catch(e){ if(e&&e.status!==403&&typeof toast==='function') toast('Utilisateurs : '+(e.message||'indisponibles')); return false; }
   }

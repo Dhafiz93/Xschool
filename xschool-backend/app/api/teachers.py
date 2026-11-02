@@ -77,6 +77,7 @@ def update_teacher(teacher_id):
         t.subs = _ids(data.get("subs"))
     if "classes" in data:
         t.classes = _ids(data.get("classes"))
+    log_action("update_teacher", "teachers", t.full_name)
     commit()
     return jsonify(teacher=_dict(t))
 

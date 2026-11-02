@@ -1,5 +1,6 @@
 """Structure academique : cycles, classes, matieres, programme."""
 from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..extensions import db
@@ -26,8 +27,20 @@ class SchoolClass(PKMixin, TimestampMixin, db.Model):
     name: Mapped[str] = mapped_column(String(80), nullable=False)
     grp: Mapped[str] = mapped_column(String(20), default="")
     spec: Mapped[str] = mapped_column(String(120), default="")
+    # Enseignant titulaire (professeur principal) de la classe. Nullable : une
+    # classe peut ne pas avoir de titulaire. ON DELETE SET NULL -> si la fiche
+    # enseignant est supprimee, la classe perd simplement son titulaire.
+    titulaire_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Historique des titulaires par annee scolaire : { "2024-2025": teacher_id, ... }.
+    # Le titulaire d'une classe peut changer d'une annee a l'autre ; cette map
+    # garde donc une valeur par annee. `titulaire_id` ci-dessus reste le titulaire
+    # "par defaut" (retro-compat) utilise en repli quand une annee n'a pas d'entree.
+    titulaires_by_year: Mapped[dict] = mapped_column(JSONB, default=dict)
 
     program = relationship("Program", back_populates="klass", cascade="all, delete-orphan")
+    titulaire = relationship("Teacher", foreign_keys=[titulaire_id])
 
 
 class Subject(PKMixin, TimestampMixin, db.Model):

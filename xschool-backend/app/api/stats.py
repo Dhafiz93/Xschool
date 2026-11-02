@@ -15,7 +15,7 @@ Parametres de query communs :
     period  libelle exact de periode (ex: \"Trimestre 1\"). Prioritaire sur idx.
     idx     -1 = Annuel (defaut), 0..n = index dans la liste des periodes.
 """
-from flask import jsonify
+from flask import abort, jsonify
 
 from ..extensions import db
 from ..models.academics import Cycle, Program, SchoolClass, Subject
@@ -23,7 +23,8 @@ from ..models.grades import Grade
 from ..models.people import Enrollment, Student
 from ..models.school import SchoolConfig
 from ..utils.security import role_required
-from ..utils.tenant import current_school_id, get_scoped_or_404, scoped_query
+from ..utils.tenant import (current_school_id, get_scoped_or_404, scoped_query,
+                            teacher_scope_ids)
 from . import api_bp
 from .common import STAFF, arg, intval
 
@@ -181,11 +182,8 @@ def _moy_map(class_id, periods, idx, cfg, year):
 # --------------------------------------------------------------------------
 # Stats par classe (miroir de statClassData).
 # --------------------------------------------------------------------------
-def _class_data(cls, idx, periods, cfg, year, enroll_statut):
+def _class_data(cls, idx, periods, cfg, year, enroll_statut, studs):
     graded = (idx == -1) or (0 <= idx < len(periods))
-    studs = (scoped_query(Student)
-             .filter(Student.class_id == cls.id)
-             .order_by(Student.nom, Student.prenom).all())
     moy_map = _moy_map(cls.id, periods, idx, cfg, year) if graded else {}
     f = m = ab = re = ec = 0
     lst = []
@@ -235,10 +233,8 @@ def _class_data(cls, idx, periods, cfg, year, enroll_statut):
 # --------------------------------------------------------------------------
 # Synthese academique par classe (miroir de statClassSynthesis du front).
 # --------------------------------------------------------------------------
-def _class_synth(cls, idx, periods, cfg, year, statut):
+def _class_synth(cls, idx, periods, cfg, year, statut, studs):
     graded = (idx == -1) or (0 <= idx < len(periods))
-    studs = (scoped_query(Student)
-             .filter(Student.class_id == cls.id).all())
     moy_map = _moy_map(cls.id, periods, idx, cfg, year) if graded else {}
     total = len(studs)
     abandon = 0
@@ -277,7 +273,11 @@ def _class_synth(cls, idx, periods, cfg, year, statut):
 
 
 def _active_class_ids():
-    """Classes des cycles actifs (ou toutes si aucun cycle n'est declare)."""
+    """Classes des cycles actifs (ou toutes si aucun cycle n'est declare).
+
+    Un ENSEIGNANT est confine aux classes de son perimetre (teacher_scope_ids) ;
+    admin / surveillant / superadmin gardent la vue complete de l'ecole.
+    """
     sid = current_school_id()
     active = None
     if sid is not None:
@@ -286,7 +286,11 @@ def _active_class_ids():
         if names:
             active = set(names)
     q = scoped_query(SchoolClass).order_by(SchoolClass.cycle, SchoolClass.name)
-    return [c for c in q.all() if active is None or c.cycle in active]
+    rows = [c for c in q.all() if active is None or c.cycle in active]
+    class_ids, _subject_ids = teacher_scope_ids()
+    if class_ids is not None:
+        rows = [c for c in rows if c.id in class_ids]
+    return rows
 
 
 def _enroll_statut(student_ids, year):
@@ -297,6 +301,33 @@ def _enroll_statut(student_ids, year):
             .filter(Enrollment.year == year,
                     Enrollment.student_id.in_(student_ids)).all())
     return {r.student_id: (r.statut or "") for r in rows}
+
+
+def _roster_map(year, class_ids=None):
+    """{class_id: [Student, ...]} pour l'annee demandee.
+
+    Miroir fidele de studentsInClass/clsOfYear du prototype front : la classe
+    d'un eleve pour une annee donnee est celle de son inscription (Enrollment)
+    de cette annee ; a defaut d'inscription cette annee-la, on retombe sur sa
+    classe de base (Student.class_id). C'est ce qui rend les stats reellement
+    dependantes de l'annee selectionnee (l'effectif et la liste changent quand
+    on change d'annee, pas seulement les moyennes).
+    """
+    enr = {r.student_id: r.class_id
+           for r in scoped_query(Enrollment)
+           .filter(Enrollment.year == year).all()}
+    studs = (scoped_query(Student)
+             .order_by(Student.nom, Student.prenom).all())
+    want = set(class_ids) if class_ids is not None else None
+    out = {}
+    for s in studs:
+        cid = enr[s.id] if s.id in enr else s.class_id
+        if cid is None:
+            continue
+        if want is not None and cid not in want:
+            continue
+        out.setdefault(cid, []).append(s)
+    return out
 
 
 def _resolve_idx(periods):
@@ -324,14 +355,14 @@ def stats_global():
     periods = _periods_for(class_ids or None, year)
     idx, _ = _resolve_idx(periods)
 
-    stu_ids = [s.id for s in (scoped_query(Student)
-               .filter(Student.class_id.in_(class_ids)).all())] if class_ids else []
+    roster = _roster_map(year, class_ids)
+    stu_ids = [s.id for studs in roster.values() for s in studs]
     statut = _enroll_statut(stu_ids, year)
 
     total = f = m = ab = re = ec = graded_total = 0
     rows = []
     for c in classes:
-        d = _class_data(c, idx, periods, cfg, year, statut)
+        d = _class_data(c, idx, periods, cfg, year, statut, roster.get(c.id, []))
         total += d["total"]
         f += d["f"]
         m += d["m"]
@@ -373,11 +404,12 @@ def stats_synthesis():
     periods = _periods_for(class_ids or None, year)
     idx, _ = _resolve_idx(periods)
 
-    stu_ids = [s.id for s in (scoped_query(Student)
-               .filter(Student.class_id.in_(class_ids)).all())] if class_ids else []
+    roster = _roster_map(year, class_ids)
+    stu_ids = [s.id for studs in roster.values() for s in studs]
     statut = _enroll_statut(stu_ids, year)
 
-    rows = [_class_synth(c, idx, periods, cfg, year, statut) for c in classes]
+    rows = [_class_synth(c, idx, periods, cfg, year, statut, roster.get(c.id, []))
+            for c in classes]
     # Classement des classes par moyenne de classe (gestion des ex aequo).
     ranked = sorted((r for r in rows if r["graded"] and r["noted"]),
                     key=lambda r: -r["avg"])
@@ -421,14 +453,19 @@ def stats_synthesis():
 @role_required(*STAFF)
 def stats_class(class_id):
     cls = get_scoped_or_404(SchoolClass, class_id)
+    # Enseignant : une classe hors perimetre est refusee en 404 (pas d'oracle
+    # d'existence) ; admin / surveillant / superadmin ne sont pas restreints.
+    class_ids, _subject_ids = teacher_scope_ids()
+    if class_ids is not None and cls.id not in class_ids:
+        abort(404)
     cfg = _cfg()
     year = arg("year") or _default_year()
     periods = _periods_for([cls.id], year)
     idx, _ = _resolve_idx(periods)
-    stu_ids = [s.id for s in (scoped_query(Student)
-               .filter(Student.class_id == cls.id).all())]
+    studs = _roster_map(year, [cls.id]).get(cls.id, [])
+    stu_ids = [s.id for s in studs]
     statut = _enroll_statut(stu_ids, year)
-    d = _class_data(cls, idx, periods, cfg, year, statut)
+    d = _class_data(cls, idx, periods, cfg, year, statut, studs)
     d["year"] = year
     d["periods"] = periods
     return jsonify(**d)

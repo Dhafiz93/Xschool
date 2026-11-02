@@ -51,6 +51,15 @@ class SchoolConfig(PKMixin, TimestampMixin, db.Model):
     bulletin_tpl: Mapped[str] = mapped_column(String(16), default="officiel")
     bulletin_fmt: Mapped[str] = mapped_column(String(16), default="vrac")  # vrac|groupe|specialite
     bulletin_fmt_by_cycle: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Type de periode par cycle : {nom_cycle: 'trimestre'|'semestre'}. Partage
+    # entre le directeur (qui regle) et les enseignants (saisie des notes).
+    periods: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Blocage de la saisie des notes par les enseignants, par cycle :
+    # {nom_cycle: false} => enseignants en consultation seule (l'admin garde l'acces).
+    teacher_grades: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Dates limites de saisie : {"annee|cycle|periode": "YYYY-MM-DD"}. Passee la
+    # date, les enseignants passent en consultation seule (l'admin garde l'acces).
+    deadlines: Mapped[dict] = mapped_column(JSONB, default=dict)
     mentions: Mapped[list] = mapped_column(JSONB, default=list)  # [{l,min}]
 
     # Communication

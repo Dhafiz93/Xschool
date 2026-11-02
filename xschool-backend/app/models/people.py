@@ -1,5 +1,5 @@
 """Eleves (+ inscriptions par annee) et enseignants."""
-from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,7 +24,9 @@ class Student(PKMixin, TimestampMixin, db.Model):
     contact_pere: Mapped[str] = mapped_column(String(40), default="")
     mere: Mapped[str] = mapped_column(String(120), default="")
     contact_mere: Mapped[str] = mapped_column(String(40), default="")
-    photo: Mapped[str] = mapped_column(String(255), default="")
+    # photo : data-URL base64 possible (recadrage cote client) -> Text, jamais
+    # String(255) sinon Postgres leve "value too long" (erreur 500 a la sauvegarde).
+    photo: Mapped[str] = mapped_column(Text, default="")
 
     class_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True
@@ -73,7 +75,8 @@ class Teacher(PKMixin, TimestampMixin, db.Model):
     tel: Mapped[str] = mapped_column(String(40), default="")
     urg_nom: Mapped[str] = mapped_column(String(160), default="")
     urg_tel: Mapped[str] = mapped_column(String(40), default="")
-    photo: Mapped[str] = mapped_column(String(255), default="")
+    # photo : data-URL base64 possible -> Text (cf. Student.photo ci-dessus).
+    photo: Mapped[str] = mapped_column(Text, default="")
     # listes d'ids (matieres / classes) ; a normaliser en tables de liaison plus tard
     subs: Mapped[list] = mapped_column(JSONB, default=list)
     classes: Mapped[list] = mapped_column(JSONB, default=list)

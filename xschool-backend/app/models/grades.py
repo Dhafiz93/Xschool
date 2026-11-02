@@ -59,3 +59,25 @@ class Discipline(PKMixin, TimestampMixin, db.Model):
     date: Mapped[str] = mapped_column(String(10), default="")
     motif: Mapped[str] = mapped_column(String(255), default="")
     gravite: Mapped[str] = mapped_column(String(20), default="")
+
+
+class TeacherAttendance(PKMixin, TimestampMixin, db.Model):
+    """Pointage de presence des ENSEIGNANTS (par la surveillance).
+
+    Les heures prevues/realisees sont calculees cote front a partir de
+    l'emploi du temps ; cette table ne persiste QUE le statut de presence
+    d'un enseignant pour une date donnee. Un enregistrement absent = presence
+    par defaut (on ne stocke que retard / absent, mais present reste valide).
+    """
+
+    __tablename__ = "teacher_attendance"
+    __table_args__ = (
+        UniqueConstraint("teacher_id", "date", name="uq_teacher_attendance_key"),
+    )
+
+    school_id: Mapped[int] = school_fk()
+    teacher_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    date: Mapped[str] = mapped_column(String(10), nullable=False)
+    status: Mapped[str] = mapped_column(String(12), default="present")  # present|retard|absent

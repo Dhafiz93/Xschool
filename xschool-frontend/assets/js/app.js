@@ -8,7 +8,34 @@
   const mgCard=h=>`<div class="rounded-2xl p-4 bg-white dark:bg-slate-900 shadow-soft card-in space-y-3">${h}</div>`;
   function schoolsConfig(){
     const s=activeSchool();
-    const pills=SCHOOLS.map(x=>`<button data-school="${x.id}" class="px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap ${x.id===state.schoolId?'bg-brand-600 text-white':'bg-white dark:bg-slate-900 text-slate-500'}">${x.name}</button>`).join('');
+    const lbl=t=>`<label class="text-[11px] font-bold text-slate-400 uppercase tracking-wide">${t}</label>`;
+    // -- Carte : créer un établissement --
+    const createCard = mgCard(
+      `<p class="font-bold text-sm">Créer un établissement</p>
+       <div>${lbl(RQ+'Nom de l\'établissement')}<input id="sc_name" class="${MGIN}" placeholder="ex: Lycée Horizon"></div>
+       <div>${lbl('Sous-domaine (optionnel)')}<input id="sc_slug" class="${MGIN}" placeholder="ex: horizon"><p class="text-[11px] text-slate-400 mt-1">Laisse vide pour générer automatiquement à partir du nom.</p></div>
+       <div class="pt-2 border-t border-slate-100 dark:border-slate-800">
+         <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2">Administrateur initial (optionnel)</p>
+         <div class="space-y-2">
+           <div>${lbl('Nom complet')}<input id="sc_ad_n" class="${MGIN}" placeholder="ex: Awa Koné"></div>
+           <div class="grid grid-cols-2 gap-2"><div>${lbl('Email')}<input id="sc_ad_e" class="${MGIN}" placeholder="admin@..."></div><div>${lbl('Identifiant')}<input id="sc_ad_l" class="${MGIN}" placeholder="optionnel"></div></div>
+           <div class="grid grid-cols-2 gap-2"><div>${lbl('Mot de passe')}<input id="sc_ad_p" type="password" class="${MGIN}" placeholder="8 car. min."></div><div>${lbl('Confirmer')}<input id="sc_ad_p2" type="password" class="${MGIN}"></div></div>
+         </div>
+         <p class="text-[11px] text-slate-400 mt-1">Renseigné, l'administrateur est créé en même temps que l'établissement. Sinon tu pourras l'ajouter plus tard dans « Utilisateurs ».</p>
+       </div>
+       <button data-addschool class="${MGBTN} w-full justify-center">Créer l'établissement</button>`);
+    // -- Liste des établissements existants (sélectionnables) --
+    const list = SCHOOLS.map(x=>{
+      const sel=x.id===state.schoolId;
+      const active=x.active!==false;
+      const badge = active
+        ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${sel?'bg-white/20 text-white':'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'}">Actif</span>`
+        : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${sel?'bg-white/20 text-white':'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300'}">Inactif</span>`;
+      return `<button data-school="${x.id}" class="w-full text-left flex items-center justify-between gap-3 p-3 rounded-2xl shadow-soft card-in ${sel?'bg-brand-600 text-white':'bg-white dark:bg-slate-900'}">
+        <div class="min-w-0"><p class="text-sm font-bold truncate">${escH(x.name)}</p><p class="text-xs ${sel?'text-white/70':'text-slate-500'} truncate">${escH(x.slug||x.code||'')} · ${(x.cycles||[]).length} cycle(s)</p></div>
+        ${badge}
+      </button>`;
+    }).join('')||'<p class="text-xs text-slate-400">Aucun établissement enregistré.</p>';
     const toggles=CYCLE_NAMES.map(c=>{
       const on=s.cycles.includes(c);
       return `<button data-cyc="${c}" class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-slate-900 shadow-soft card-in text-left w-full">
@@ -16,41 +43,102 @@
         <span class="w-11 h-6 rounded-full flex items-center px-0.5 transition ${on?'bg-emerald-500 justify-end':'bg-slate-300 dark:bg-slate-700 justify-start'}"><span class="w-5 h-5 rounded-full bg-white shadow block"></span></span>
       </button>`;
     }).join('');
-    return `<div class="rounded-2xl p-3 bg-brand-50 dark:bg-slate-900 text-brand-700 dark:text-brand-300 text-xs font-semibold card-in flex items-center gap-2">${svg_(I.shield)} SuperAdmin — active les cycles scolaires de chaque établissement. Les administrateurs ne verront que les cycles activés ici.</div>`
-      + `<div class="flex gap-2 mt-3 overflow-x-auto pb-1">${pills}</div>`
+    return `<div class="rounded-2xl p-3 bg-brand-50 dark:bg-slate-900 text-brand-700 dark:text-brand-300 text-xs font-semibold card-in flex items-center gap-2">${svg_(I.shield)} SuperAdmin — crée et gère les établissements, puis active leurs cycles scolaires.</div>`
+      + section('Nouvel établissement') + createCard
+      + section('Établissements enregistrés','<span class="text-xs text-slate-400">'+SCHOOLS.length+'</span>')
+      + `<div class="space-y-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">${list}</div>`
       + section('Cycles de « '+s.name+' »','<span class="text-xs text-slate-400">'+s.cycles.length+' actifs</span>')
       + `<div class="space-y-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">${toggles}</div>`;
   }
   function wireSchools(){
     const main=$('#main');
-    main.querySelectorAll('[data-school]').forEach(b=>b.addEventListener('click',()=>{ state.schoolId=b.dataset.school; renderView(); }));
+    main.querySelectorAll('[data-school]').forEach(b=>b.addEventListener('click',()=>{ state.schoolId=b.dataset.school; state.suSchool=b.dataset.school; renderView(); }));
     main.querySelectorAll('[data-cyc]').forEach(b=>b.addEventListener('click',()=>{
       const s=activeSchool(), c=b.dataset.cyc, i=s.cycles.indexOf(c);
       if(i>=0){ if(s.cycles.length<=1){ toast('Au moins un cycle doit rester actif'); return; } s.cycles.splice(i,1); }
       else s.cycles.push(c);
       renderView(); toast('Cycles mis à jour ✓');
     }));
+    // --- SUPERADMIN : créer un établissement (branche backend + mode démo) ---
+    { const addSchool=main.querySelector('[data-addschool]'); if(addSchool) addSchool.addEventListener('click',()=>{
+        const v=id=>{const e=main.querySelector('#'+id);return e?e.value.trim():'';};
+        const name=v('sc_name'); if(!name){ toast('Le nom de l\'établissement est requis'); return; }
+        let slug=v('sc_slug').toLowerCase();
+        if(slug && !/^[a-z0-9-]{2,60}$/.test(slug)){ toast('Sous-domaine invalide (2-60 car. : minuscules, chiffres, -)'); return; }
+        if(!slug){ slug=name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60); }
+        // Administrateur initial optionnel : tout ou rien.
+        const an=v('sc_ad_n'), ae=v('sc_ad_e').toLowerCase(), al=v('sc_ad_l').toLowerCase(), ap=v('sc_ad_p'), ap2=v('sc_ad_p2');
+        const wantAdmin = !!(an||ae||al||ap||ap2);
+        let admin=null;
+        if(wantAdmin){
+          if(!an){ toast('Nom complet de l\'administrateur requis'); return; }
+          if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ae)){ toast('Email administrateur invalide'); return; }
+          if(al && !/^[a-z0-9._-]{3,80}$/.test(al)){ toast('Identifiant invalide (3-80 car. : minuscules, chiffres, . _ -)'); return; }
+          if(ap.length<8){ toast('Mot de passe : 8 caractères minimum'); return; }
+          if(ap!==ap2){ toast('Les deux mots de passe ne correspondent pas'); return; }
+          admin={ full_name:an, email:ae, login:al||undefined, password:ap };
+        }
+        const payload={ name:name, slug:slug||undefined };
+        if(admin) payload.admin=admin;
+        if(typeof apiOn==='function'&&apiOn()){
+          addSchool.disabled=true;
+          createSchoolApi(payload).then(sc=>{
+            if(sc){ state.schoolId=sc.id; state.suSchool=sc.id; if(window._xsLoaded) delete window._xsLoaded['users:'+sc.id]; }
+            logit('Création établissement', name+(admin?(' + admin '+ae):''), 'ok', sc?sc.id:state.schoolId);
+            renderView(); toast('Établissement créé ✓ — '+name);
+          }).catch(ex=>{ addSchool.disabled=false; toast('Création refusée : '+((ex&&ex.message)||'erreur')); });
+          return;
+        }
+        // Mode démo (hors-ligne) : ajout en mémoire.
+        if(SCHOOLS.some(x=>(x.slug||'').toLowerCase()===slug)){ toast('Ce sous-domaine est déjà utilisé'); return; }
+        if(admin && USERS.some(u=>(u.email||'').toLowerCase()===ae)){ toast('Cet email admin est déjà utilisé'); return; }
+        if(admin && al && USERS.some(u=>(u.login||'').toLowerCase()===al)){ toast('Cet identifiant admin est déjà utilisé'); return; }
+        const nid=uid('sc');
+        SCHOOLS.push({ id:nid, name:name, code:(slug||nid).toUpperCase(), slug:slug||nid, active:true, cycles:CYCLE_NAMES.slice() });
+        if(admin){ USERS.push({ id:uid('u'), name:an, email:ae, login:al||'', role:'admin', active:true, status:'active', schoolId:nid, perms:{} }); }
+        state.schoolId=nid; state.suSchool=nid;
+        logit('Création établissement', name+(admin?(' + admin '+ae):''), 'ok', nid);
+        renderView(); toast('Établissement créé ✓ — '+name);
+      }); }
   }
 
   function wireManage(){
     const main=$('#main');
+    // Vue superadmin « Utilisateurs » branchee a l'API : on recharge les comptes
+    // de l'ecole selectionnee (ou de toutes si « Tous les etablissements »).
+    if(state.view==='users' && typeof staffApiOn==='function' && staffApiOn()){
+      window._xsLoaded=window._xsLoaded||{};
+      const _ku='users:'+(state.suSchool||'all');
+      if(!window._xsLoaded[_ku]){ window._xsLoaded[_ku]=true; hydrateUsersApi(state.suSchool||'all').then(ok=>{ if(ok) renderView(); }); }
+    }
     main.querySelectorAll('[data-mtab]').forEach(b=>b.addEventListener('click',()=>{ state.manageTab=b.dataset.mtab; renderView(); }));
-    main.querySelectorAll('[data-yact]').forEach(b=>b.addEventListener('click',()=>{ state.year=b.dataset.yact; renderView(); toast('Année active : '+b.dataset.yact); }));
+    main.querySelectorAll('[data-anneetab]').forEach(b=>b.addEventListener('click',()=>{ state.anneeTab=b.dataset.anneetab; renderView(); }));
+    main.querySelectorAll('[data-yact]').forEach(b=>b.addEventListener('click',()=>{ state.year=b.dataset.yact; state.stuGrPeriodSet=false; if(typeof statInvalidateCache==='function') statInvalidateCache(); renderView(); afterYearChange(b.dataset.yact); }));
     main.querySelectorAll('[data-perset]').forEach(b=>b.addEventListener('click',()=>{ const [c,t]=b.dataset.perset.split('|'); setPeriodType(c,t); renderView(); toast('Périodes mises à jour ✓'); }));
     main.querySelectorAll('[data-grallow]').forEach(b=>b.addEventListener('click',()=>{ const c=b.dataset.grallow; setTeacherGrades(c,!teacherGradesAllowed(c)); renderView(); toast(teacherGradesAllowed(c)?('Saisie autorisée — '+c+' ✓'):('Saisie bloquée — '+c)); }));
     main.querySelectorAll('[data-dl]').forEach(inp=>inp.addEventListener('change',()=>{ const [c,p]=inp.dataset.dl.split('|'); setDeadline(c,p,inp.value); renderView(); toast(inp.value?('Échéance '+p+' : '+fmtDate(inp.value)):('Échéance retirée — '+p)); }));
-    main.querySelectorAll('[data-suschool]').forEach(b=>b.addEventListener('click',()=>{ state.suSchool=b.dataset.suschool; renderView(); }));
+    main.querySelectorAll('[data-suschool]').forEach(b=>b.addEventListener('click',()=>{ state.suSchool=b.dataset.suschool; if(b.dataset.suschool!=='all') state.schoolId=b.dataset.suschool; renderView(); }));
     { const suR=main.querySelector('#su_role'); if(suR) suR.addEventListener('change',()=>{ state.suRole=suR.value; renderView(); }); }
     main.querySelectorAll('[data-uopen]').forEach(b=>b.addEventListener('click',()=>{ state.mgUserOpen = state.mgUserOpen===b.dataset.uopen?'':b.dataset.uopen; renderView(); }));
     main.querySelectorAll('[data-uvalid]').forEach(b=>b.addEventListener('click',()=>{ const u=USERS.find(x=>x.id===b.dataset.uvalid); if(!u) return; u.active=true; u.status='active'; u.notified=true; renderView(); toast('Compte validé ✔ — email de confirmation envoyé'); mailSentModal(u); }));
     main.querySelectorAll('[data-urefuse]').forEach(b=>b.addEventListener('click',()=>{ const u=USERS.find(x=>x.id===b.dataset.urefuse); if(!u) return; if(!confirm('Refuser et supprimer la demande de '+u.name+' ?')) return; USERS=USERS.filter(x=>x.id!==b.dataset.urefuse); renderView(); toast('Demande refusée'); }));
-    main.querySelectorAll('[data-utoggle]').forEach(b=>b.addEventListener('click',()=>{ const u=USERS.find(x=>x.id===b.dataset.utoggle); if(!u) return; if(u.active&&u.role==='admin'&&USERS.filter(x=>x.role==='admin'&&x.active).length<=1){toast('Garde au moins un administrateur actif');return;} u.active=!u.active; logit(u.active?'Compte activé':'Compte désactivé',u.name+' ('+(ROLE_LABELS[u.role]||u.role)+')','warn',u.schoolId); renderView(); toast(u.active?'Compte activé ✓':'Compte désactivé'); }));
-    main.querySelectorAll('[data-udel]').forEach(b=>b.addEventListener('click',()=>{ const u=USERS.find(x=>x.id===b.dataset.udel); if(!u) return; if(u.role==='admin'&&USERS.filter(x=>x.role==='admin').length<=1){toast('Impossible de supprimer le dernier administrateur');return;} USERS=USERS.filter(x=>x.id!==b.dataset.udel); renderView(); toast('Utilisateur supprimé'); }));
+    main.querySelectorAll('[data-utoggle]').forEach(b=>b.addEventListener('click',()=>{ const u=USERS.find(x=>x.id===b.dataset.utoggle); if(!u) return; if(u.active&&u.role==='admin'&&USERS.filter(x=>x.role==='admin'&&x.active&&x.schoolId===u.schoolId).length<=1){toast('Garde au moins un administrateur actif');return;} if(typeof apiOn==='function'&&apiOn()){ setUserActiveApi(u,!u.active).then(()=>{ logit(u.active?'Compte activé':'Compte désactivé',u.name+' ('+(ROLE_LABELS[u.role]||u.role)+')','warn',u.schoolId); renderView(); toast(u.active?'Compte activé ✓':'Compte désactivé'); }).catch(ex=>toast('Action refusée : '+((ex&&ex.message)||'erreur'))); return; } u.active=!u.active; logit(u.active?'Compte activé':'Compte désactivé',u.name+' ('+(ROLE_LABELS[u.role]||u.role)+')','warn',u.schoolId); renderView(); toast(u.active?'Compte activé ✓':'Compte désactivé'); }));
+    main.querySelectorAll('[data-udel]').forEach(b=>b.addEventListener('click',()=>{ const u=USERS.find(x=>x.id===b.dataset.udel); if(!u) return; if(u.role==='admin'&&USERS.filter(x=>x.role==='admin'&&x.schoolId===u.schoolId).length<=1){toast('Impossible de supprimer le dernier administrateur');return;} if(!confirm('Supprimer définitivement le compte de '+u.name+' ?')) return; if(typeof apiOn==='function'&&apiOn()){ deleteUserApi(u).then(()=>{ logit('Compte supprimé',u.name+' ('+(ROLE_LABELS[u.role]||u.role)+')','warn',u.schoolId); renderView(); toast('Utilisateur supprimé'); }).catch(ex=>toast('Suppression refusée : '+((ex&&ex.message)||'erreur'))); return; } USERS=USERS.filter(x=>x.id!==b.dataset.udel); logit('Compte supprimé',u.name+' ('+(ROLE_LABELS[u.role]||u.role)+')','warn',u.schoolId); renderView(); toast('Utilisateur supprimé'); }));
     main.querySelectorAll('[data-urole]').forEach(sel=>sel.addEventListener('change',()=>{ const u=USERS.find(x=>x.id===sel.dataset.urole); if(!u) return; const old=u.role; u.role=sel.value; logit('Modification de rôle',u.name+' : '+(ROLE_LABELS[old]||old)+' → '+(ROLE_LABELS[sel.value]||sel.value),'warn',u.schoolId); renderView(); toast('Rôle mis à jour → '+(ROLE_LABELS[sel.value]||sel.value)); }));
     main.querySelectorAll('[data-ureset]').forEach(b=>b.addEventListener('click',()=>{ const u=USERS.find(x=>x.id===b.dataset.ureset); if(!u) return; u.perms={}; renderView(); toast('Permissions réinitialisées au rôle ✓'); }));
     main.querySelectorAll('[data-uperm]').forEach(cb=>cb.addEventListener('change',()=>{ const [uid2,key]=cb.dataset.uperm.split('|'); const u=USERS.find(x=>x.id===uid2); if(!u) return; if(!u.perms) u.perms={}; if(cb.checked===permDefault(u.role,key)) delete u.perms[key]; else u.perms[key]=cb.checked; renderView(); }));
     const clCy=main.querySelector('#cl_cy'); if(clCy) clCy.addEventListener('change',()=>{ state.mgCycle=clCy.value; renderView(); });
     const clDip=main.querySelector('#cl_dip'); if(clDip) clDip.addEventListener('change',()=>{ state.mgDip=clDip.value; renderView(); });
+    // Affectation du professeur titulaire d'une classe
+    main.querySelectorAll('[data-cltit]').forEach(b=>b.addEventListener('click',()=>{
+      const c=DB.classes.find(x=>x.id===b.dataset.cltit); if(!c) return;
+      const sel=main.querySelector('#tit_'+c.id); const tid=sel?sel.value:'';
+      const yr=state.year;
+      const okMsg=tid?('Titulaire affecté ✓ pour '+yr):('Titulaire retiré pour '+yr);
+      if(typeof apiOn==='function'&&apiOn()){ setClassTitulaireApi(c,tid,yr).then(()=>{ renderView(); toast(okMsg); }).catch(ex=>toast('Action refusée : '+((ex&&ex.message)||'erreur'))); return; }
+      c.titulaireByYear=c.titulaireByYear||{}; if(tid) c.titulaireByYear[yr]=tid; else delete c.titulaireByYear[yr];
+      renderView(); toast(okMsg);
+    }));
     main.querySelectorAll('[data-stu]').forEach(b=>b.addEventListener('click',()=>{ state.mgStuOpen = state.mgStuOpen===b.dataset.stu?'':b.dataset.stu; renderView(); }));
     { const sy=main.querySelector('#stat_year'); if(sy) sy.addEventListener('change',()=>{ state.mgStatYear=sy.value; renderView(); }); }
     { const bp=main.querySelector('[data-bulkpromote]'); if(bp) bp.addEventListener('click',()=>{
@@ -76,20 +164,73 @@
     main.querySelectorAll('[data-medit]').forEach(b=>b.addEventListener('click',()=>{ const e=DB.students.find(x=>x.id===b.dataset.medit); if(!e) return; state.mgStuEdit=e.id; state.mgStuOpen=''; state.mgPhoto=e.photo||''; renderView(); }));
     const mCancel=main.querySelector('[data-mcancel]'); if(mCancel) mCancel.addEventListener('click',()=>{ state.mgStuEdit=''; state.mgPhoto=''; renderView(); });
     main.querySelectorAll('[data-sassign]').forEach(b=>b.addEventListener('click',()=>{ const e=DB.students.find(x=>x.id===b.dataset.sassign); if(!e) return; const sel=main.querySelector('#as_cls_'+e.id); if(typeof apiOn==='function'&&apiOn()){ const _c=sel?sel.value:''; upsertEnrollmentApi(e,state.year,_c,e.statut).then(()=>{ e.year=state.year; renderView(); toast(_c?('Affecté à '+clsLabel(_c)+' ✓'):'Retiré de sa classe (reste dans la base)'); }).catch(ex=>toast('Affectation refusée : '+((ex&&ex.message)||'erreur'))); return; } e.cls=sel?sel.value:''; setEnroll(e,state.year,e.cls,e.statut); e.year=state.year; renderView(); toast(e.cls?('Affecté à '+clsLabel(e.cls)+' ✓'):'Retiré de sa classe (reste dans la base)'); }));
+    main.querySelectorAll('[data-sremovecls]').forEach(b=>b.addEventListener('click',()=>{ const e=DB.students.find(x=>x.id===b.dataset.sremovecls); if(!e) return; if(!confirm('Retirer '+stuName(e)+' de la classe '+clsLabel(e.cls)+' ? L\'élève reste dans la base de l\'école.')) return; if(typeof apiOn==='function'&&apiOn()){ upsertEnrollmentApi(e,state.year,'',e.statut).then(()=>{ e.cls=''; e.year=state.year; renderView(); toast('Retiré de sa classe (reste dans la base)'); }).catch(ex=>toast('Action refusée : '+((ex&&ex.message)||'erreur'))); return; } e.cls=''; setEnroll(e,state.year,'',e.statut); e.year=state.year; renderView(); toast('Retiré de sa classe (reste dans la base)'); }));
+    main.querySelectorAll('[data-sunabandon]').forEach(b=>b.addEventListener('click',()=>{ const e=DB.students.find(x=>x.id===b.dataset.sunabandon); if(!e) return; if(typeof apiOn==='function'&&apiOn()){ upsertEnrollmentApi(e,state.year,e.cls,'Nouveau').then(()=>{ e.statut='Nouveau'; e.year=state.year; renderView(); toast('Abandon annulé — statut « Nouveau »'); }).catch(ex=>toast('Action refusée : '+((ex&&ex.message)||'erreur'))); return; } e.statut='Nouveau'; setEnroll(e,state.year,e.cls,'Nouveau'); e.year=state.year; renderView(); toast('Abandon annulé — statut « Nouveau »'); }));
     const val=id=>{const e=main.querySelector('#'+id);return e?e.value.trim():'';};
     const chk=id=>{const e=main.querySelector('#'+id);return e?e.checked:false;};
-    main.querySelectorAll('[data-msave]').forEach(b=>b.addEventListener('click',()=>{ const e=DB.students.find(x=>x.id===b.dataset.msave); if(!e) return; const nom=val('el_nom'),prenom=val('el_prenom'); if(!nom&&!prenom){toast('Nom / prénom requis');return;} if(typeof apiOn==='function'&&apiOn()){ const _f={mat:val('el_mat')||e.mat,nom,prenom,dob:val('el_dob'),sexe:val('el_sexe')||'M',lieu:val('el_lieu'),pere:val('el_pere'),pereTel:val('el_peretel'),mere:val('el_mere'),mereTel:val('el_meretel'),cls:val('el_c'),statut:val('el_statut')||'Nouveau',photo:state.mgPhoto,year:state.year}; updateStudentApi(e,_f).then(()=>upsertEnrollmentApi(e,state.year,_f.cls,_f.statut)).then(()=>{ state.mgStuEdit=''; state.mgPhoto=''; renderView(); toast('Fiche élève mise à jour ✔'); }).catch(ex=>toast('Mise à jour refusée : '+((ex&&ex.message)||'erreur'))); return; } e.mat=val('el_mat')||e.mat; e.nom=nom; e.prenom=prenom; e.dob=val('el_dob'); e.sexe=val('el_sexe')||'M'; e.lieu=val('el_lieu'); e.pere=val('el_pere'); e.pereTel=val('el_peretel'); e.mere=val('el_mere'); e.mereTel=val('el_meretel'); e.cls=val('el_c'); e.st=val('el_s'); e.statut=val('el_statut')||'Nouveau'; e.photo=state.mgPhoto; setEnroll(e,state.year,e.cls,e.statut); e.year=state.year; state.mgStuEdit=''; state.mgPhoto=''; renderView(); toast('Fiche élève mise à jour ✔'); }));
+    main.querySelectorAll('[data-msave]').forEach(b=>b.addEventListener('click',()=>{ const e=DB.students.find(x=>x.id===b.dataset.msave); if(!e) return; const nom=val('el_nom'),prenom=val('el_prenom'); if(!nom&&!prenom){toast('Nom / prénom requis');return;} { const _err=firstErr(errDob(val('el_dob')),errTel(val('el_peretel'),'Le téléphone du père'),errTel(val('el_meretel'),'Le téléphone de la mère')); if(_err){toast(_err);return;} } if(typeof apiOn==='function'&&apiOn()){ const _f={mat:val('el_mat')||e.mat,nom,prenom,dob:val('el_dob'),sexe:val('el_sexe')||'M',lieu:val('el_lieu'),pere:val('el_pere'),pereTel:val('el_peretel'),mere:val('el_mere'),mereTel:val('el_meretel'),cls:val('el_c'),statut:val('el_statut')||'Nouveau',photo:state.mgPhoto,year:state.year}; updateStudentApi(e,_f).then(()=>upsertEnrollmentApi(e,state.year,_f.cls,_f.statut)).then(()=>{ state.mgStuEdit=''; state.mgPhoto=''; renderView(); toast('Fiche élève mise à jour ✔'); }).catch(ex=>toast('Mise à jour refusée : '+((ex&&ex.message)||'erreur'))); return; } e.mat=val('el_mat')||e.mat; e.nom=nom; e.prenom=prenom; e.dob=val('el_dob'); e.sexe=val('el_sexe')||'M'; e.lieu=val('el_lieu'); e.pere=val('el_pere'); e.pereTel=val('el_peretel'); e.mere=val('el_mere'); e.mereTel=val('el_meretel'); e.cls=val('el_c'); e.st=val('el_s'); e.statut=val('el_statut')||'Nouveau'; e.photo=state.mgPhoto; setEnroll(e,state.year,e.cls,e.statut); e.year=state.year; state.mgStuEdit=''; state.mgPhoto=''; renderView(); toast('Fiche élève mise à jour ✔'); }));
     main.querySelectorAll('[data-madd]').forEach(b=>b.addEventListener('click',()=>{
       const k=b.dataset.madd;
-      if(k==='eleves'){ const nom=val('el_nom'),prenom=val('el_prenom'); if(!nom&&!prenom){toast('Nom / prénom requis');return;} const mat=val('el_mat')||('2026-'+String(1000+Math.floor(Math.random()*9000))); if(typeof apiOn==='function'&&apiOn()){ const _f={mat,nom,prenom,dob:val('el_dob'),sexe:val('el_sexe')||'M',lieu:val('el_lieu'),pere:val('el_pere'),pereTel:val('el_peretel'),mere:val('el_mere'),mereTel:val('el_meretel'),cls:val('el_c'),statut:val('el_statut')||'Nouveau',photo:state.mgPhoto,year:state.year}; createStudentApi(_f).then(()=>{ state.mgPhoto=''; renderView(); toast(_f.cls?('Élève inscrit dans '+clsLabel(_f.cls)+' ✓'):'Élève ajouté à la base ✓'); }).catch(ex=>toast('Création refusée : '+((ex&&ex.message)||'erreur'))); return; } DB.students.push({id:uid('e'),mat,nom,prenom,dob:val('el_dob'),sexe:val('el_sexe')||'M',lieu:val('el_lieu'),pere:val('el_pere'),pereTel:val('el_peretel'),mere:val('el_mere'),mereTel:val('el_meretel'),cls:val('el_c'),st:val('el_s'),statut:val('el_statut')||'Nouveau',photo:state.mgPhoto}); const _ne=DB.students[DB.students.length-1]; _ne.year=state.year; _ne.enrollments=[{year:state.year,cls:_ne.cls,statut:_ne.statut}]; state.mgPhoto=''; toast(val('el_c')?('Élève inscrit dans '+clsLabel(val('el_c'))+' ✓'):'Élève ajouté à la base de l\'école ✓ (à affecter à une classe)'); }
+      if(k==='eleves'){ const nom=val('el_nom'),prenom=val('el_prenom'); if(!nom&&!prenom){toast('Nom / prénom requis');return;} { const _err=firstErr(errDob(val('el_dob')),errTel(val('el_peretel'),'Le téléphone du père'),errTel(val('el_meretel'),'Le téléphone de la mère')); if(_err){toast(_err);return;} } const mat=val('el_mat')||('2026-'+String(1000+Math.floor(Math.random()*9000))); if(typeof apiOn==='function'&&apiOn()){ const _f={mat,nom,prenom,dob:val('el_dob'),sexe:val('el_sexe')||'M',lieu:val('el_lieu'),pere:val('el_pere'),pereTel:val('el_peretel'),mere:val('el_mere'),mereTel:val('el_meretel'),cls:val('el_c'),statut:val('el_statut')||'Nouveau',photo:state.mgPhoto,year:state.year}; createStudentApi(_f).then(()=>{ state.mgPhoto=''; renderView(); toast(_f.cls?('Élève inscrit dans '+clsLabel(_f.cls)+' ✓'):'Élève ajouté à la base ✓'); }).catch(ex=>toast('Création refusée : '+((ex&&ex.message)||'erreur'))); return; } DB.students.push({id:uid('e'),mat,nom,prenom,dob:val('el_dob'),sexe:val('el_sexe')||'M',lieu:val('el_lieu'),pere:val('el_pere'),pereTel:val('el_peretel'),mere:val('el_mere'),mereTel:val('el_meretel'),cls:val('el_c'),st:val('el_s'),statut:val('el_statut')||'Nouveau',photo:state.mgPhoto}); const _ne=DB.students[DB.students.length-1]; _ne.year=state.year; _ne.enrollments=[{year:state.year,cls:_ne.cls,statut:_ne.statut}]; state.mgPhoto=''; toast(val('el_c')?('Élève inscrit dans '+clsLabel(val('el_c'))+' ✓'):'Élève ajouté à la base de l\'école ✓ (à affecter à une classe)'); }
       else if(k==='classes'){ const cy=val('cl_cy'); let payload; if(cy==='Cycle Professionnel'){ const dip=val('cl_dip')||'CAP', lv=val('cl_lv')||'1', sp=val('cl_sp'); if(!sp){toast('Sélectionne une filière');return;} payload={cycle:cy,name:dip+lv+' '+sp,grp:val('cl_g'),spec:dip+' · '+sp}; } else { const n=val('cl_n'); if(!n){toast('Nom de classe requis');return;} payload={cycle:cy,name:n,grp:val('cl_g'),spec:''}; } if(typeof apiOn==='function'&&apiOn()){ createClassApi(payload).then(()=>{ renderView(); toast('Classe créée ✓'); }).catch(ex=>toast('Création refusée : '+((ex&&ex.message)||'erreur'))); return; } DB.classes.push(Object.assign({id:uid('c')},payload)); toast('Classe créée ✓'); }
-      else if(k==='ens'){ const nom=val('en_nom'),prenom=val('en_prenom'); if(!nom&&!prenom){toast('Nom / prénom requis');return;} if(typeof apiOn==='function'&&apiOn()){ const _f={nom,prenom,dob:val('en_dob'),dip:val('en_dip'),spec:val('en_spec'),tel:val('en_tel'),urgNom:val('en_urgn'),urgTel:val('en_urgt'),photo:state.mgEnsPhoto,subs:[],cls:[]}; createTeacherApi(_f).then(()=>{ state.mgEnsPhoto=''; renderView(); toast('Enseignant ajouté ✓'); }).catch(ex=>toast('Création refusée : '+((ex&&ex.message)||'erreur'))); return; } DB.teachers.push({id:uid('t'),n:((nom+' '+prenom).trim()),nom,prenom,dob:val('en_dob'),dip:val('en_dip'),spec:val('en_spec'),tel:val('en_tel'),urgNom:val('en_urgn'),urgTel:val('en_urgt'),photo:state.mgEnsPhoto,subs:[],cls:[]}); state.mgEnsPhoto=''; toast('Enseignant ajouté ✓'); }
+      else if(k==='ens'){ const nom=val('en_nom'),prenom=val('en_prenom'); if(!nom&&!prenom){toast('Nom / prénom requis');return;} { const _err=firstErr(errDob(val('en_dob')),errTel(val('en_tel'),'Le téléphone'),errTel(val('en_urgt'),"Le téléphone d'urgence")); if(_err){toast(_err);return;} } if(typeof apiOn==='function'&&apiOn()){ const _f={nom,prenom,dob:val('en_dob'),dip:val('en_dip'),spec:val('en_spec'),tel:val('en_tel'),urgNom:val('en_urgn'),urgTel:val('en_urgt'),photo:state.mgEnsPhoto,subs:[],cls:[]}; createTeacherApi(_f).then(()=>{ state.mgEnsPhoto=''; renderView(); toast('Enseignant ajouté ✓'); }).catch(ex=>toast('Création refusée : '+((ex&&ex.message)||'erreur'))); return; } DB.teachers.push({id:uid('t'),n:((nom+' '+prenom).trim()),nom,prenom,dob:val('en_dob'),dip:val('en_dip'),spec:val('en_spec'),tel:val('en_tel'),urgNom:val('en_urgn'),urgTel:val('en_urgt'),photo:state.mgEnsPhoto,subs:[],cls:[]}); state.mgEnsPhoto=''; toast('Enseignant ajouté ✓'); }
       else if(k==='mat'){ const n=val('ma_n'); if(!n){toast('Nom requis');return;} if(typeof apiOn==='function'&&apiOn()){ createSubjectApi({n,dom:val('ma_d')||'autre'}).then(()=>{ renderView(); toast('Matière créée ✓'); }).catch(ex=>toast('Création refusée : '+((ex&&ex.message)||'erreur'))); return; } DB.subjects.push({id:uid('s'),n,dom:val('ma_d')||'autre'}); toast('Matière créée ✓'); }
       else if(k==='prog'){ const cls=val('pr_c'),sub=val('pr_s'); if(!cls||!sub){toast('Classe et matière requises');return;} if(DB.program.some(p=>p.cls===cls&&p.sub===sub)){toast('Déjà au programme');return;} if(typeof apiOn==='function'&&apiOn()){ saveProgramApi(cls,sub,{coef:+val('pr_k')||1,oblig:chk('pr_o'),spec:chk('pr_sp')}).then(()=>{ renderView(); toast('Ajouté au programme ✓'); }).catch(ex=>toast('Ajout refusé : '+((ex&&ex.message)||'erreur'))); return; } DB.program.push({cls,sub,coef:+val('pr_k')||1,oblig:chk('pr_o'),spec:chk('pr_sp')}); toast('Ajouté au programme ✓'); }
       else if(k==='year'){ const y=val('yr_n'); if(!/^\d{4}-\d{4}$/.test(y)){toast('Format attendu : AAAA-AAAA');return;} if(YEARS.includes(y)){toast('Cette année existe déjà');return;} YEARS.push(y); YEARS.sort(); toast('Année ajoutée ✓'); }
-      else if(k==='user'){ const n=val('us_n'); if(!n){toast('Nom requis');return;} const r=val('us_r')||'teacher'; const sid=(state.role==='super'&&state.suSchool!=='all')?state.suSchool:state.schoolId; USERS.push({id:uid('u'),name:n,email:val('us_e'),role:r,active:true,status:'active',schoolId:sid,perms:{}}); logit('Création utilisateur',n+' ('+(ROLE_LABELS[r]||r)+')','ok',sid); toast('Utilisateur créé ✓'); }
+      else if(k==='user'){ const r=val('us_r')||'teacher'; let n, linkId=''; if(r==='teacher'||r==='student'){ linkId=val('us_person'); const _list=(r==='teacher')?DB.teachers:DB.students; const _p=_list.find(x=>x.id===linkId); if(!_p){toast(r==='teacher'?'Sélectionne un enseignant déjà enregistré':'Sélectionne un élève déjà enregistré');return;} n=(((_p.nom||'')+' '+(_p.prenom||'')).trim())||_p.n||''; } else { n=val('us_n'); } if(!n){toast('Nom requis');return;} const email=val('us_e').toLowerCase(); const p=val('us_p'), p2=val('us_p2'); const sid=(state.role==='super'&&state.suSchool!=='all')?state.suSchool:state.schoolId; if(typeof apiOn==='function'&&apiOn()){ if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast('Email invalide');return;} if(p.length<8){toast('Mot de passe : 8 caractères minimum');return;} if(p!==p2){toast('Les deux mots de passe ne correspondent pas');return;} createUserApi({name:n,email:email,password:p,role:r,personFrontId:linkId}, (state.role==='super')?sid:null).then(()=>{ renderView(); toast('Utilisateur créé ✓'); }).catch(ex=>toast('Création refusée : '+((ex&&ex.message)||'erreur'))); return; } if(p&&p.length<8){toast('Mot de passe : 8 caractères minimum');return;} if(p!==p2){toast('Les deux mots de passe ne correspondent pas');return;} USERS.push({id:uid('u'),name:n,email:email,role:r,active:true,status:'active',schoolId:sid,perms:{},teacherId:(r==='teacher'?linkId:undefined),studentId:(r==='student'?linkId:undefined)}); logit('Création utilisateur',n+' ('+(ROLE_LABELS[r]||r)+')','ok',sid); toast('Utilisateur créé ✓'); }
       renderView();
     }));
+    // --- Creation utilisateur : enseignant/eleve DOIVENT venir de la liste deja enregistree ---
+    { const usRole=main.querySelector('#us_r');
+      if(usRole){
+        const applyUserRole=()=>{
+          const r=usRole.value;
+          const isLinked=(r==='teacher'||r==='student');
+          const nameLbl=main.querySelector('#us_name_lbl');
+          const personLbl=main.querySelector('#us_person_lbl');
+          const personSel=main.querySelector('#us_person');
+          const personCap=main.querySelector('#us_person_cap');
+          const hint=main.querySelector('#us_person_hint');
+          if(nameLbl) nameLbl.classList.toggle('hidden',isLinked);
+          if(personLbl) personLbl.classList.toggle('hidden',!isLinked);
+          if(hint) hint.classList.toggle('hidden',!isLinked);
+          if(isLinked && personSel){
+            const list=(r==='teacher')?DB.teachers:DB.students;
+            const nameOf=p=>(((p.nom||'')+' '+(p.prenom||'')).trim())||p.n||'(sans nom)';
+            if(personCap) personCap.innerHTML=RQ+((r==='teacher')?'Enseignant enregistré':'Élève enregistré');
+            const opts=list.slice().sort((a,b)=>nameOf(a).localeCompare(nameOf(b),'fr')).map(p=>`<option value="${escH(p.id)}">${escH(nameOf(p))}${(r==='student'&&p.mat)?(' · '+escH(p.mat)):''}</option>`).join('');
+            personSel.innerHTML=opts||`<option value="">— aucun ${r==='teacher'?'enseignant':'élève'} enregistré —</option>`;
+            if(hint) hint.textContent=list.length?('Le compte est rattaché à un '+((r==='teacher')?'enseignant':'élève')+' déjà enregistré.'):('Aucun '+((r==='teacher')?'enseignant':'élève')+' enregistré : ajoute-le d\'abord dans sa rubrique.');
+          }
+        };
+        usRole.addEventListener('change',applyUserRole);
+        applyUserRole();
+      }
+    }
+    // --- SUPERADMIN : creer un administrateur d'ecole (branche backend) ---
+    { const addAdmin=main.querySelector('[data-addadmin]'); if(addAdmin) addAdmin.addEventListener('click',()=>{
+        const sid=state.suSchool;
+        if(!sid||sid==='all'){ toast('Sélectionne d\'abord un établissement'); return; }
+        const n=val('ad_n'), email=val('ad_e').toLowerCase(), login=val('ad_l').toLowerCase(), p=val('ad_p'), p2=val('ad_p2');
+        if(!n){ toast('Nom complet requis'); return; }
+        if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ toast('Email invalide'); return; }
+        if(login && !/^[a-z0-9._-]{3,80}$/.test(login)){ toast('Identifiant invalide (3-80 car. : minuscules, chiffres, . _ -)'); return; }
+        if(p.length<8){ toast('Mot de passe : 8 caractères minimum'); return; }
+        if(p!==p2){ toast('Les deux mots de passe ne correspondent pas'); return; }
+        const sc=SCHOOLS.find(s=>s.id===sid);
+        const payload={ full_name:n, email:email, login:login||undefined, password:p };
+        if(typeof apiOn==='function'&&apiOn()){
+          addAdmin.disabled=true;
+          createSchoolAdminApi(sid, payload).then(u=>{ if(window._xsLoaded) delete window._xsLoaded['users:'+sid]; renderView(); toast('Administrateur créé ✓ — '+(u&&u.email||email)); }).catch(ex=>{ addAdmin.disabled=false; toast('Création refusée : '+((ex&&ex.message)||'erreur')); });
+          return;
+        }
+        // Mode demo (hors-ligne) : simple ajout en memoire.
+        if(USERS.some(u=>(u.email||'').toLowerCase()===email)){ toast('Cet email est déjà utilisé'); return; }
+        if(login && USERS.some(u=>(u.login||'').toLowerCase()===login)){ toast('Cet identifiant est déjà utilisé'); return; }
+        USERS.push({ id:uid('u'), name:n, email:email, login:login||'', role:'admin', active:true, status:'active', schoolId:sid, perms:{} });
+        logit('Création administrateur', n+' ('+(sc?sc.name:sid)+')', 'ok', sid);
+        renderView(); toast('Administrateur créé ✓ ('+(sc?sc.name:'')+')');
+      }); }
     // --- Enseignants : photo, fiche, édition ---
     const enFile=main.querySelector('#en_file'); if(enFile) enFile.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; if(f.size>8*1024*1024){toast('Image trop lourde (max 8 Mo)');return;} const r=new FileReader(); r.onload=()=>{ cropPhoto(r.result,256,d=>{ state.mgEnsPhoto=d; renderView(); toast('Photo recadrée ✓'); }); }; r.readAsDataURL(f); });
     const enClr=main.querySelector('[data-tphoto-clear]'); if(enClr) enClr.addEventListener('click',()=>{ state.mgEnsPhoto=''; renderView(); });
@@ -98,7 +239,7 @@
     main.querySelectorAll('[data-tview]').forEach(b=>b.addEventListener('click',()=>{ state.mgEnsOpen = state.mgEnsOpen===b.dataset.tview?'':b.dataset.tview; renderView(); }));
     main.querySelectorAll('[data-tedit]').forEach(b=>b.addEventListener('click',()=>{ const t=DB.teachers.find(x=>x.id===b.dataset.tedit); if(!t) return; state.mgEnsEdit=t.id; state.mgEnsOpen=''; state.mgEnsPhoto=t.photo||''; renderView(); }));
     const tCancel=main.querySelector('[data-tcancel]'); if(tCancel) tCancel.addEventListener('click',()=>{ state.mgEnsEdit=''; state.mgEnsPhoto=''; renderView(); });
-    main.querySelectorAll('[data-tsave]').forEach(b=>b.addEventListener('click',()=>{ const t=DB.teachers.find(x=>x.id===b.dataset.tsave); if(!t) return; const nom=val('en_nom'),prenom=val('en_prenom'); if(!nom&&!prenom){toast('Nom / prénom requis');return;} if(typeof apiOn==='function'&&apiOn()){ const _f={nom,prenom,dob:val('en_dob'),dip:val('en_dip'),spec:val('en_spec'),tel:val('en_tel'),urgNom:val('en_urgn'),urgTel:val('en_urgt'),photo:state.mgEnsPhoto,subs:t.subs.slice(),cls:t.cls.slice()}; updateTeacherApi(t,_f).then(()=>{ state.mgEnsEdit=''; state.mgEnsPhoto=''; renderView(); toast('Fiche enseignant mise à jour ✔'); }).catch(ex=>toast('Mise à jour refusée : '+((ex&&ex.message)||'erreur'))); return; } t.nom=nom; t.prenom=prenom; t.n=((nom+' '+prenom).trim())||t.n; t.dob=val('en_dob'); t.dip=val('en_dip'); t.spec=val('en_spec'); t.tel=val('en_tel'); t.urgNom=val('en_urgn'); t.urgTel=val('en_urgt'); t.photo=state.mgEnsPhoto; state.mgEnsEdit=''; state.mgEnsPhoto=''; renderView(); toast('Fiche enseignant mise à jour ✔'); }));
+    main.querySelectorAll('[data-tsave]').forEach(b=>b.addEventListener('click',()=>{ const t=DB.teachers.find(x=>x.id===b.dataset.tsave); if(!t) return; const nom=val('en_nom'),prenom=val('en_prenom'); if(!nom&&!prenom){toast('Nom / prénom requis');return;} { const _err=firstErr(errDob(val('en_dob')),errTel(val('en_tel'),'Le téléphone'),errTel(val('en_urgt'),"Le téléphone d'urgence")); if(_err){toast(_err);return;} } if(typeof apiOn==='function'&&apiOn()){ const _f={nom,prenom,dob:val('en_dob'),dip:val('en_dip'),spec:val('en_spec'),tel:val('en_tel'),urgNom:val('en_urgn'),urgTel:val('en_urgt'),photo:state.mgEnsPhoto,subs:t.subs.slice(),cls:t.cls.slice()}; updateTeacherApi(t,_f).then(()=>{ state.mgEnsEdit=''; state.mgEnsPhoto=''; renderView(); toast('Fiche enseignant mise à jour ✔'); }).catch(ex=>toast('Mise à jour refusée : '+((ex&&ex.message)||'erreur'))); return; } t.nom=nom; t.prenom=prenom; t.n=((nom+' '+prenom).trim())||t.n; t.dob=val('en_dob'); t.dip=val('en_dip'); t.spec=val('en_spec'); t.tel=val('en_tel'); t.urgNom=val('en_urgn'); t.urgTel=val('en_urgt'); t.photo=state.mgEnsPhoto; state.mgEnsEdit=''; state.mgEnsPhoto=''; renderView(); toast('Fiche enseignant mise à jour ✔'); }));
     main.querySelectorAll('[data-tassign]').forEach(b=>b.addEventListener('click',()=>{
       const t=DB.teachers.find(x=>x.id===b.dataset.tassign); if(!t) return;
       const s=val('as_s_'+t.id), c=val('as_c_'+t.id);
@@ -125,12 +266,12 @@
     }));
     main.querySelectorAll('[data-mdel]').forEach(b=>b.addEventListener('click',()=>{
       const p=b.dataset.mdel.split(':'); const k=p[0];
-      if(k==='eleves'){ const _e=DB.students.find(e=>e.id===p[1]); if(typeof apiOn==='function'&&apiOn()&&_e){ deleteStudentApi(_e).then(()=>{ renderView(); toast('Supprimé'); }).catch(ex=>toast('Suppression refusée : '+((ex&&ex.message)||'erreur'))); return; } DB.students=DB.students.filter(e=>e.id!==p[1]); }
+      if(k==='eleves'){ const _e=DB.students.find(e=>e.id===p[1]); if(_e){ const _nm=(((_e.nom||'')+' '+(_e.prenom||'')).trim()); const _acc=USERS.find(u=>u.role==='student'&&(u.studentId===_e.id||(!u.studentId&&_nm&&(u.name||'').trim().toLowerCase()===_nm.toLowerCase()))); if(_acc){ toast('Suppression impossible : un compte utilisateur (« '+_acc.name+' ») est rattaché à cet élève. Supprime d\'abord ce compte.'); return; } } if(typeof apiOn==='function'&&apiOn()&&_e){ deleteStudentApi(_e).then(()=>{ renderView(); toast('Supprimé'); }).catch(ex=>toast('Suppression refusée : '+((ex&&ex.message)||'erreur'))); return; } DB.students=DB.students.filter(e=>e.id!==p[1]); }
       else if(k==='classes'){ if(DB.students.some(e=>e.cls===p[1])&&!confirm('Des élèves sont inscrits dans cette classe. Supprimer quand même ?')) return; const _cleanup=()=>{ DB.classes=DB.classes.filter(c=>c.id!==p[1]); DB.program=DB.program.filter(pr=>pr.cls!==p[1]); DB.teachers.forEach(t=>t.cls=t.cls.filter(x=>x!==p[1])); DB.students.forEach(e=>{ if(e.cls===p[1]) e.cls=''; }); }; if(typeof apiOn==='function'&&apiOn()){ const _c=DB.classes.find(c=>c.id===p[1]); deleteClassApi(_c).then(()=>{ _cleanup(); renderView(); toast('Supprimé'); }).catch(ex=>toast('Suppression refusée : '+((ex&&ex.message)||'erreur'))); return; } _cleanup(); }
-      else if(k==='ens'){ const _t=DB.teachers.find(t=>t.id===p[1]); if(typeof apiOn==='function'&&apiOn()&&_t){ deleteTeacherApi(_t).then(()=>{ renderView(); toast('Supprimé'); }).catch(ex=>toast('Suppression refusée : '+((ex&&ex.message)||'erreur'))); return; } DB.teachers=DB.teachers.filter(t=>t.id!==p[1]); }
+      else if(k==='ens'){ const _t=DB.teachers.find(t=>t.id===p[1]); if(_t){ const _nm=(((_t.nom||'')+' '+(_t.prenom||'')).trim())||_t.n||''; const _acc=USERS.find(u=>u.role==='teacher'&&(u.teacherId===_t.id||(!u.teacherId&&_nm&&(u.name||'').trim().toLowerCase()===_nm.toLowerCase()))); if(_acc){ toast('Suppression impossible : un compte utilisateur (« '+_acc.name+' ») est rattaché à cet enseignant. Supprime d\'abord ce compte.'); return; } } if(typeof apiOn==='function'&&apiOn()&&_t){ deleteTeacherApi(_t).then(()=>{ DB.classes.forEach(c=>{ if(c.titulaire===p[1]) c.titulaire=''; if(c.titulaireByYear){ for(const _y in c.titulaireByYear){ if(c.titulaireByYear[_y]===p[1]) delete c.titulaireByYear[_y]; } } }); renderView(); toast('Supprimé'); }).catch(ex=>toast('Suppression refusée : '+((ex&&ex.message)||'erreur'))); return; } DB.teachers=DB.teachers.filter(t=>t.id!==p[1]); DB.classes.forEach(c=>{ if(c.titulaire===p[1]) c.titulaire=''; if(c.titulaireByYear){ for(const _y in c.titulaireByYear){ if(c.titulaireByYear[_y]===p[1]) delete c.titulaireByYear[_y]; } } }); }
       else if(k==='mat'){ const _s=DB.subjects.find(s=>s.id===p[1]); if(typeof apiOn==='function'&&apiOn()&&_s){ deleteSubjectApi(_s).then(()=>{ DB.program=DB.program.filter(pr=>pr.sub!==p[1]); DB.teachers.forEach(t=>t.subs=t.subs.filter(x=>x!==p[1])); renderView(); toast('Supprimé'); }).catch(ex=>toast('Suppression refusée : '+((ex&&ex.message)||'erreur'))); return; } DB.subjects=DB.subjects.filter(s=>s.id!==p[1]); DB.program=DB.program.filter(pr=>pr.sub!==p[1]); DB.teachers.forEach(t=>t.subs=t.subs.filter(x=>x!==p[1])); }
       else if(k==='prog'){ const _pr=DB.program.find(pr=>pr.cls===p[1]&&pr.sub===p[2]); if(typeof apiOn==='function'&&apiOn()&&_pr){ deleteProgramApi(_pr).then(()=>{ renderView(); toast('Supprimé'); }).catch(ex=>toast('Suppression refusée : '+((ex&&ex.message)||'erreur'))); return; } DB.program=DB.program.filter(pr=>!(pr.cls===p[1]&&pr.sub===p[2])); }
-      else if(k==='year'){ if(YEARS.length<=1){toast('Au moins une année requise');return;} YEARS.splice(YEARS.indexOf(p[1]),1); if(state.year===p[1]) state.year=YEARS[YEARS.length-1]; }
+      else if(k==='year'){ if(YEARS.length<=1){toast('Au moins une année requise');return;} if(typeof yearHasData==='function'&&yearHasData(p[1])){ toast('Suppression impossible : des données sont liées à l’année '+p[1]+'.'); return; } YEARS.splice(YEARS.indexOf(p[1]),1); if(state.year===p[1]) state.year=YEARS[YEARS.length-1]; }
       renderView(); toast('Supprimé');
     }));
   }
@@ -148,6 +289,8 @@
     else if(v==='finance') html=finance();
     else if(v==='timetable') html=timetable();
     else if(v==='attendance') html=attendance();
+    else if(v==='fees') html=fees();
+    else if(v==='profile') html=profile();
     else if(v==='pointage') html=pointage();
     else if(v==='myhours') html=myhours();
     else if(v==='bulletin') html=bulletin();
@@ -163,7 +306,7 @@
     else if(v==='payments') html=payments();
     else if(v==='schedules') html=schedules();
     else if(v==='reports') html=reports();
-    else if(v==='users') html=superUsers();
+    else if(v==='users') html=(state.role==='super'?superUsers():mgUsers());
     else if(v==='logs') html=logs();
     else html=generic(v);
     const main=$('#main'); main.innerHTML=html; main.classList.remove('fade'); void main.offsetWidth; main.classList.add('fade');
@@ -187,6 +330,20 @@
       toast('Archivage auto '+(ABS_ALERT_AUTO_ARCHIVE?'activé':'désactivé'));
       renderView();
     }));
+    // Notif absence côté élève/parent : marquer l'alerte de l'élève comme lue.
+    main.querySelectorAll('[data-stunotifread]').forEach(b=>b.addEventListener('click',()=>{
+      const sid=b.dataset.stunotifread; let cnt=0;
+      ALERTS.forEach(a=>{ if(a&&a.auto&&a.kind==='absence'&&a.stu===sid&&!a.read){ a.read=true; cnt++; } });
+      if(cnt) toast('Notification marquée comme lue');
+      renderView();
+    }));
+    // Cohérence année/classe (bulletin élève) : basculer vers l'année suggérée.
+    main.querySelectorAll('[data-setyear]').forEach(b=>b.addEventListener('click',()=>{
+      const y=b.dataset.setyear; if(!YEARS.includes(y)) return;
+      state.year=y; state.stuGrPeriodSet=false;
+      if(typeof statInvalidateCache==='function') statInvalidateCache();
+      renderView(); afterYearChange(y);
+    }));
     if(v==='timetable') wireTimetable();
     if(v==='students') wireStudents();
     if(v==='manage') wireManage();
@@ -196,6 +353,7 @@
     if(v==='classes') wireClasses();
     if(v==='payments') wirePayments();
     if(v==='bulletins') wireBulletins();
+    if(v==='bulletin') wireBulletin();
     if(v==='cartes') wireCartes();
     if(v==='feuilles') wireFeuilles();
     if(v==='stats') wireStats();
@@ -203,9 +361,41 @@
     if(v==='users') wireManage();
     if(v==='logs') wireLogs();
     if(v==='appel') wireAppel();
+    if(v==='pointage') wirePointage();
     if(v==='discipline') wireDiscipline();
     if(v==='absences') wireAbsences();
     if(v==='absstats') wireAbsStats();
+    if(v==='profile') wireProfile();
+  }
+
+  // Profil éditable par l'utilisateur (élève/parent & enseignant) : coordonnées
+  // personnelles + photo. Les champs gérés par l'administration restent verrouillés.
+  function wireProfile(){
+    const main=$('#main');
+    const eb=main.querySelector('[data-profedit]'); if(eb) eb.addEventListener('click',()=>{
+      state.profEdit=true;
+      const rec=(state.role==='teacher')?currentTeacher():studentForView();
+      state.profPhoto=(rec&&rec.photo)||'';
+      renderView();
+    });
+    const cb=main.querySelector('[data-profcancel]'); if(cb) cb.addEventListener('click',()=>{ state.profEdit=false; state.profPhoto=undefined; renderView(); });
+    const file=main.querySelector('#pf_file'); if(file) file.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; if(f.size>8*1024*1024){toast('Image trop lourde (max 8 Mo)');return;} const r=new FileReader(); r.onload=()=>{ cropPhoto(r.result,256,d=>{ state.profPhoto=d; renderView(); toast('Photo recadrée ✓'); }); }; r.readAsDataURL(f); });
+    const clr=main.querySelector('[data-pfphoto-clear]'); if(clr) clr.addEventListener('click',()=>{ state.profPhoto=''; renderView(); });
+    const sb=main.querySelector('[data-profsave]'); if(sb) sb.addEventListener('click',()=>{
+      if(state.role==='teacher'){
+        const t=currentTeacher(); if(!t){toast('Aucune fiche enseignant');return;}
+        const _err=firstErr(errDob(val('pf_dob')),errTel(val('pf_tel'),'Le téléphone'),errTel(val('pf_urgt'),"Le téléphone à prévenir")); if(_err){toast(_err);return;}
+        const photo=(state.profPhoto!==undefined?state.profPhoto:(t.photo||''));
+        if(typeof apiOn==='function'&&apiOn()){ const _f={nom:t.nom,prenom:t.prenom,dob:val('pf_dob'),dip:val('pf_dip'),spec:t.spec,tel:val('pf_tel'),urgNom:val('pf_urgn'),urgTel:val('pf_urgt'),photo,subs:(t.subs||[]).slice(),cls:(t.cls||[]).slice()}; updateTeacherApi(t,_f).then(()=>{ t.email=val('pf_email'); state.profEdit=false; state.profPhoto=undefined; renderView(); toast('Profil mis à jour ✔'); }).catch(ex=>toast('Mise à jour refusée : '+((ex&&ex.message)||'erreur'))); return; }
+        t.dob=val('pf_dob'); t.dip=val('pf_dip'); t.tel=val('pf_tel'); t.email=val('pf_email'); t.urgNom=val('pf_urgn'); t.urgTel=val('pf_urgt'); t.photo=photo; state.profEdit=false; state.profPhoto=undefined; renderView(); toast('Profil mis à jour ✔');
+        return;
+      }
+      const e=studentForView(); if(!e){toast('Aucune fiche élève');return;}
+      const _err=firstErr(errDob(val('pf_dob')),errTel(val('pf_peretel'),'Le téléphone du père'),errTel(val('pf_meretel'),'Le téléphone de la mère')); if(_err){toast(_err);return;}
+      const photo=(state.profPhoto!==undefined?state.profPhoto:(e.photo||''));
+      if(typeof apiOn==='function'&&apiOn()){ const _cls=clsOfYear(e,state.year)||e.cls; const _f={mat:e.mat,nom:e.nom,prenom:e.prenom,dob:val('pf_dob'),sexe:e.sexe||'M',lieu:val('pf_lieu'),pere:val('pf_pere'),pereTel:val('pf_peretel'),mere:val('pf_mere'),mereTel:val('pf_meretel'),cls:_cls,statut:e.statut||'Nouveau',photo,year:state.year}; updateStudentApi(e,_f).then(()=>{ state.profEdit=false; state.profPhoto=undefined; renderView(); toast('Profil mis à jour ✔'); }).catch(ex=>toast('Mise à jour refusée : '+((ex&&ex.message)||'erreur'))); return; }
+      e.dob=val('pf_dob'); e.lieu=val('pf_lieu'); e.pere=val('pf_pere'); e.pereTel=val('pf_peretel'); e.mere=val('pf_mere'); e.mereTel=val('pf_meretel'); e.photo=photo; state.profEdit=false; state.profPhoto=undefined; renderView(); toast('Profil mis à jour ✔');
+    });
   }
 
   function syncYear(){
@@ -218,16 +408,42 @@
     sel.classList.toggle('cursor-pointer',canYear);
     sel.classList.toggle('pointer-events-none',!canYear);
     sel.classList.toggle('opacity-80',!canYear);
-    sel.onchange = canYear ? (()=>{ state.year=sel.value; renderView(); toast('Année active : '+sel.value); }) : null;
+    sel.onchange = canYear ? (()=>{ state.year=sel.value; state.stuGrPeriodSet=false; if(typeof statInvalidateCache==='function') statInvalidateCache(); renderView(); afterYearChange(sel.value); }) : null;
+  }
+
+  // Notification automatique après changement d'année scolaire : avertit quand
+  // l'année sélectionnée est VIDE (aucun élève/note/paiement/discipline rattaché),
+  // sinon confirme simplement l'année active.
+  function afterYearChange(year){
+    if(typeof yearHasData==='function' && !yearHasData(year)){
+      toast('⚠️ Année '+year+' vide : aucune donnée rattachée (élèves, notes, paiements…).');
+    } else {
+      toast('Année active : '+year);
+    }
   }
 
   function initChart(c){
+    if(typeof Chart==='undefined'||!c) return;
     const dark=document.documentElement.classList.contains('dark');
     const grid=dark?'rgba(255,255,255,.08)':'rgba(0,0,0,.06)', tick=dark?'#94a3b8':'#64748b';
-    new Chart(c,{type:'bar',data:{labels:['Coll.','Lyc.','Indus.','Pro'],
-      datasets:[{label:'Effectif',data:[420,560,168,100],borderRadius:8,
-        backgroundColor:['#17304b','#244a73','#3f6fa3','#9bb9d8']}]},
-      options:{plugins:{legend:{display:false}},scales:{y:{grid:{color:grid},ticks:{color:tick}},x:{grid:{display:false},ticks:{color:tick}}}}});
+    const kind=(c.dataset&&c.dataset.chart)||'effectifs';
+    const d=(typeof dashChartData==='function')?dashChartData(kind):{labels:[],data:[]};
+    // Detruit une eventuelle instance precedente (evite "canvas already in use").
+    if(c._chart){ try{ c._chart.destroy(); }catch(e){} c._chart=null; }
+    // Aucune donnee reelle -> message au lieu d'un diagramme vide.
+    if(!d.labels.length){
+      if(!c.parentNode.querySelector('.chart-empty')){
+        c.style.display='none';
+        c.insertAdjacentHTML('afterend','<p class="chart-empty text-xs text-slate-400 text-center py-8">Aucune donn\u00e9e \u00e0 afficher pour le moment.</p>');
+      }
+      return;
+    }
+    const palette=['#17304b','#244a73','#3f6fa3','#6c95c2','#9bb9d8','#c3d6ea'];
+    const colors=d.labels.map((_,i)=>palette[i%palette.length]);
+    c._chart=new Chart(c,{type:'bar',data:{labels:d.labels,
+      datasets:[{label:kind==='recettes'?'Recettes (FCFA)':'Effectif',data:d.data,borderRadius:8,
+        backgroundColor:colors}]},
+      options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:grid},ticks:{color:tick}},x:{grid:{display:false},ticks:{color:tick}}}}});
   }
 
   function renderNav(){
@@ -248,10 +464,11 @@
       a.innerHTML=`<span class="w-5 h-5">${svg(NAV[k].i)}</span><span class="font-semibold">${NAV[k].t}</span>`;
       a.addEventListener('click',()=>{go(k);closeDrawer();}); dn.appendChild(a);
     });
-    $('#drawerUser').textContent=r.name; $('#drawerRole').textContent=r.tag;
+    const who=(typeof sessionUserName==='function'&&sessionUserName())||r.name;
+    $('#drawerUser').textContent=who; $('#drawerRole').textContent=r.tag;
     { const ds=$('#drawerSchool'); if(ds){ const sc=activeSchool(); ds.textContent=sc.name; ds.title=sc.name+' · '+sc.code; } }
     $('#roleTag').textContent=r.tag;
-    $('#chipName').textContent=r.name; $('#chipRole').textContent=r.tag;
+    $('#chipName').textContent=who; $('#chipRole').textContent=r.tag;
     const dotHtml=`<span class="w-4 h-4">${svg(r.icon)}</span>`;
     $('#chipDot').className=`w-8 h-8 rounded-xl grid place-items-center text-white ${r.badge}`; $('#chipDot').innerHTML=dotHtml;
     $('#drawerDot').className=`w-9 h-9 rounded-xl grid place-items-center text-white shrink-0 ${r.badge}`; $('#drawerDot').innerHTML=dotHtml;
@@ -275,8 +492,8 @@
             <div><p class="font-extrabold leading-none">XSchool</p><p class="text-[11px] text-slate-500">Plateforme multi-établissements</p></div>
           </div>
           <button id="tenantThemeBtn" class="w-9 h-9 grid place-items-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-            <svg id="tMoon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z"/></svg>
-            <svg id="tSun" class="w-5 h-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>
+            <svg id="tMoon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            <svg id="tSun" class="w-5 h-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
           </button>
         </div>
       </header>
@@ -348,10 +565,9 @@
             <div><p class="font-extrabold leading-none">XSchool</p><p class="text-[11px] text-slate-500">Gestion scolaire</p></div>
           </div>
           <div class="flex items-center gap-2">
-            <a href="#espaces" class="hidden sm:inline text-sm font-semibold text-slate-600 dark:text-slate-300 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">Les espaces</a>
-            <button id="landThemeBtn" class="w-9 h-9 grid place-items-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-              <svg id="landMoon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z"/></svg>
-              <svg id="landSun" class="w-5 h-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>
+          <button id="landThemeBtn" class="w-9 h-9 grid place-items-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+              <svg id="landMoon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              <svg id="landSun" class="w-5 h-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
             </button>
           </div>
         </div>
@@ -359,9 +575,9 @@
       <main class="flex-1">
         <section class="max-w-6xl mx-auto px-5 py-10 lg:py-16 grid lg:grid-cols-2 gap-10 items-center">
           <div class="card-in">
-            <span class="inline-flex items-center gap-2 text-xs font-semibold text-brand-700 dark:text-brand-300 bg-brand-50 dark:bg-brand-500/15 px-3 py-1 rounded-full">Plateforme EMS • mobile-first</span>
+            <span class="inline-flex items-center gap-2 text-xs font-semibold text-brand-700 dark:text-brand-300 bg-brand-50 dark:bg-brand-500/15 px-3 py-1 rounded-full">${escH(activeSchool().name)}</span>
             <h1 class="text-3xl lg:text-5xl font-extrabold leading-tight mt-4">La gestion scolaire,<br><span class="text-brand-700 dark:text-brand-300">claire et unifiée.</span></h1>
-            <p class="text-slate-500 mt-4 max-w-md">Notes, bulletins, emplois du temps, pointage des enseignants et scolarité — un espace dédié pour chaque profil, du directeur au parent.</p>
+            <p class="text-slate-500 mt-4 max-w-md">Pilotez toute votre école depuis une seule plateforme. <span class="font-semibold text-brand-700 dark:text-brand-300">XSchool, l’école connectée.</span></p>
             <div class="grid grid-cols-4 gap-4 mt-8 max-w-md">${miniStats}</div>
           </div>
           <div class="card-in">
@@ -374,9 +590,9 @@
                 <div class="min-w-0 flex-1"><p class="text-sm font-bold truncate">${activeSchool().name}</p><p class="text-[11px] text-brand-600 dark:text-brand-300 font-semibold truncate">${activeSchool().slug}.xschool.io</p></div>
                 <button id="switchTenant" type="button" class="text-[11px] font-bold text-brand-600 dark:text-brand-300 shrink-0">Changer</button>
               </div>
-              <label class="block"><span class="text-xs font-semibold text-slate-500">Adresse e-mail</span>
+              <label class="block"><span class="text-xs font-semibold text-slate-500">${RQ}Adresse e-mail</span>
                 <input id="loginEmail" type="email" class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:border-brand-400" placeholder="exemple@xschool.io"></label>
-              <label class="block"><span class="text-xs font-semibold text-slate-500">Mot de passe</span>
+              <label class="block"><span class="text-xs font-semibold text-slate-500">${RQ}Mot de passe</span>
                 <input id="loginPass" type="password" class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:border-brand-400" placeholder="••••••••"></label>
               <div class="flex items-center justify-between text-xs">
                 <label class="flex items-center gap-2 text-slate-500"><input type="checkbox" class="rounded"> Se souvenir</label>
@@ -385,7 +601,7 @@
               <p id="loginErr" class="hidden text-xs font-semibold text-rose-500"></p>
               <button type="submit" class="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold transition active:scale-95">Se connecter</button>
             </form>
-            <p class="text-[11px] text-slate-400 mt-4 text-center">Ton espace est déterminé par ton e-mail. Démo : mot de passe libre.</p>
+            <p class="text-[11px] text-slate-400 mt-4 text-center">Utilise l'adresse e-mail (ou l'identifiant) et le mot de passe fournis par ton établissement.</p>
             <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 text-center text-sm">
               <span class="text-slate-500">Nouvel élève / parent ?</span>
               <button id="toSignup" type="button" class="font-bold text-brand-600 dark:text-brand-300 ml-1">Créer mon compte</button>
@@ -401,16 +617,16 @@
             <p id="gLinked" class="hidden mt-2 text-xs font-semibold text-emerald-600 dark:text-emerald-300"></p>
             <div class="flex items-center gap-3 my-4"><span class="flex-1 h-px bg-slate-200 dark:bg-slate-700"></span><span class="text-[11px] text-slate-400">ou</span><span class="flex-1 h-px bg-slate-200 dark:bg-slate-700"></span></div>
             <form id="signupForm" class="space-y-3">
-              <label class="block"><span class="text-xs font-semibold text-slate-500">Nom complet de l'élève</span>
+              <label class="block"><span class="text-xs font-semibold text-slate-500">${RQ}Nom complet de l'élève</span>
                 <input id="su_name" class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:border-brand-400" placeholder="Prénom Nom"></label>
-              <label class="block"><span class="text-xs font-semibold text-slate-500">Adresse Gmail</span>
+              <label class="block"><span class="text-xs font-semibold text-slate-500">${RQ}Adresse Gmail</span>
                 <input id="su_email" type="email" class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:border-brand-400" placeholder="exemple@gmail.com"></label>
               <div class="flex items-center gap-2 p-2.5 rounded-xl bg-brand-50 dark:bg-brand-500/10 border border-brand-100 dark:border-brand-500/20 text-xs">
                 <span class="font-bold text-slate-600 dark:text-slate-300">Établissement :</span>
                 <span class="font-bold text-brand-700 dark:text-brand-300 truncate">${activeSchool().name}</span>
                 <span class="ml-auto text-brand-600 dark:text-brand-300 font-semibold shrink-0">${activeSchool().slug}.xschool.io</span>
               </div>
-              <label class="block"><span class="text-xs font-semibold text-slate-500">Classe souhaitée</span>
+              <label class="block"><span class="text-xs font-semibold text-slate-500">${RQ}Classe souhaitée</span>
                 <select id="su_cls" class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-sm font-semibold outline-none focus:border-brand-400">${clsOptsForSchool(state.schoolId)}</select></label>
               <button type="submit" class="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold transition active:scale-95">Envoyer ma demande</button>
             </form>
@@ -424,7 +640,7 @@
               <div class="min-w-0 flex-1"><p class="text-sm font-bold truncate">${activeSchool().name}</p><p class="text-[11px] text-brand-600 dark:text-brand-300 font-semibold truncate">${activeSchool().slug}.xschool.io</p></div>
             </div>
             <form id="resetStep1" class="space-y-3">
-              <label class="block"><span class="text-xs font-semibold text-slate-500">Adresse e-mail du compte</span>
+              <label class="block"><span class="text-xs font-semibold text-slate-500">${RQ}Adresse e-mail du compte</span>
                 <input id="rs_email" type="email" class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:border-brand-400" placeholder="exemple@xschool.io"></label>
               <button type="submit" class="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold transition active:scale-95">Envoyer le code de réinitialisation</button>
               <p class="text-[11px] text-slate-400 text-center">Un code à 6 chiffres sera envoyé à cette adresse si un compte existe dans cet établissement.</p>
@@ -433,11 +649,11 @@
               <div class="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-300 font-semibold">
                 <span>Code envoyé à</span><span id="rs_dest" class="truncate"></span>
               </div>
-              <label class="block"><span class="text-xs font-semibold text-slate-500">Code reçu (6 chiffres)</span>
+              <label class="block"><span class="text-xs font-semibold text-slate-500">${RQ}Code reçu (6 chiffres)</span>
                 <input id="rs_code" inputmode="numeric" maxlength="6" class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-sm tracking-[0.4em] font-bold outline-none focus:border-brand-400" placeholder="______"></label>
-              <label class="block"><span class="text-xs font-semibold text-slate-500">Nouveau mot de passe</span>
+              <label class="block"><span class="text-xs font-semibold text-slate-500">${RQ}Nouveau mot de passe</span>
                 <input id="rs_pass" type="password" class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:border-brand-400" placeholder="Au moins 6 caractères"></label>
-              <label class="block"><span class="text-xs font-semibold text-slate-500">Confirme le mot de passe</span>
+              <label class="block"><span class="text-xs font-semibold text-slate-500">${RQ}Confirme le mot de passe</span>
                 <input id="rs_pass2" type="password" class="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-sm outline-none focus:border-brand-400" placeholder="••••••••"></label>
               <button type="submit" class="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold transition active:scale-95">Réinitialiser mon mot de passe</button>
               <button id="rs_resend" type="button" class="w-full text-[11px] font-bold text-brand-600 dark:text-brand-300">Renvoyer le code</button>
@@ -446,15 +662,11 @@
            </div>
           </div>
         </section>
-        <section id="espaces" class="max-w-6xl mx-auto px-5 py-10 lg:py-14">
-          <div class="mb-6"><h2 class="text-2xl font-extrabold">Six espaces, un seul outil</h2><p class="text-sm text-slate-500 mt-1">Chaque rôle dispose de permissions dédiées (RBAC). Clique sur un espace pour pré-remplir l’e-mail de démo.</p></div>
-          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">${cards}</div>
-        </section>
       </main>
       <footer class="border-t border-slate-200 dark:border-slate-800">
         <div class="max-w-6xl mx-auto px-5 py-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-slate-500">
-          <p>© 2026 XSchool — Prototype EMS.</p>
-          <p>contact@xschool.io · +228 90 00 00 00</p>
+          <p>© 2026 XSchool — Tous droits réservés.</p>
+          <p>contact@xschool.io · +228 90434699</p>
         </div>
       </footer>
     </div>`;
@@ -471,6 +683,7 @@
         try{
           const role=await apiLogin(em,pw);
           if(err) err.classList.add('hidden');
+          if(typeof wipeDemoData==='function') wipeDemoData();
           try{ await hydrateFromApi(); }catch(_e){}
           enterApp(role);
         }catch(ex){
@@ -562,6 +775,14 @@
     renderLogin(); window.scrollTo(0,0);
   }
   $('#logoutBtn').addEventListener('click',logout);
+  // Session expiree (JWT): l'API a deja purge le token local -> on previent et on
+  // renvoie vers l'ecran de connexion au lieu de laisser echouer chaque action.
+  let _authExpiredAt=0;
+  window.addEventListener('xschool:auth-expired',function(){
+    const now=Date.now(); if(now-_authExpiredAt<1500) return; _authExpiredAt=now;
+    try{ toast('Session expirée : reconnecte-toi.'); }catch(e){}
+    if(state.screen!=='login'){ try{ logout(); }catch(e){} }
+  });
 
   function go(v){ state.view=v; renderNav(); renderView(); $('#main').scrollTo(0,0); }
   // ---------- DRAWER + THEME ----------
@@ -584,6 +805,9 @@
   // ---------- INIT ----------
   // Deep-link par sous-domaine simulé : #<slug> ouvre directement l'école
   (async function(){
+    // Mode donnees reelles : si on parle au backend, on purge toute la demo en
+    // memoire avant le 1er rendu pour n'afficher QUE les vraies donnees.
+    if(typeof apiOn==='function' && apiOn() && typeof wipeDemoData==='function'){ wipeDemoData(); }
     // Reprise de session si un token valide existe : on hydrate puis on entre direct.
     if(typeof apiOn==='function' && apiOn() && API.authenticated()){
       try{
@@ -591,6 +815,10 @@
         if(ok){ const u=API.user(); enterApp(u?mapApiRole(u.role):'admin'); return; }
       }catch(e){}
     }
+    // Ecran de selection d'etablissement : on recupere d'abord la liste PUBLIQUE
+    // des ecoles actives (mode API) pour que les etablissements crees par le
+    // superadmin apparaissent, puis on affiche l'ecran tenant/login.
+    if(typeof hydratePublicSchools==='function'){ try{ await hydratePublicSchools(); }catch(e){} }
     let h=''; try{ h=(location.hash||'').replace('#','').toLowerCase(); }catch(e){}
     const sc=SCHOOLS.find(s=>s.slug===h);
     if(sc){ setTenant(sc.id); } else { renderTenant(); }

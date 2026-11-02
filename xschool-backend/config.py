@@ -49,6 +49,32 @@ class BaseConfig:
         o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()
     ]
 
+    # Frontend statique servi par le backend (meme origine => aucun CORS, aucun
+    # mode prototype : tout passe par l'API Flask + PostgreSQL).
+    # Par defaut : dossier 'frontend' place a cote de ce fichier.
+    FRONTEND_DIR = os.getenv(
+        "FRONTEND_DIR",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend"),
+    )
+
+    # --- Passerelle de messagerie (WhatsApp / SMS) ---
+    # Fournisseur actif : none|log (simulation) | meta | twilio | generic.
+    # Lu directement depuis l'environnement par app/services/messaging.py ;
+    # les identifiants ne vivent QUE dans l'env, jamais en base ni dans le code.
+    MESSAGING_PROVIDER = os.getenv("MESSAGING_PROVIDER", "none")
+    # Indicatif pays applique aux numeros locaux a 8 chiffres (Togo = 228).
+    DEFAULT_COUNTRY_CODE = os.getenv("DEFAULT_COUNTRY_CODE", "228")
+
+    # --- Rate limiting (Flask-Limiter) ---
+    # Protege les points d'entree sensibles (login, PDF, envoi de messages...).
+    # En dev / mono-process, 'memory://' suffit. En production multi-worker
+    # (gunicorn), le compteur en memoire est PAR worker : definis un backend
+    # partage, ex. RATELIMIT_STORAGE_URI=redis://localhost:6379/0, sinon la
+    # limite effective est multipliee par le nombre de workers.
+    RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
+    RATELIMIT_ENABLED = _bool("RATELIMIT_ENABLED", True)
+    RATELIMIT_HEADERS_ENABLED = True
+
 
 class DevelopmentConfig(BaseConfig):
     DEBUG = True
@@ -60,6 +86,8 @@ class ProductionConfig(BaseConfig):
 
 class TestingConfig(BaseConfig):
     TESTING = True
+    # Pas de rate limiting dans les tests (deterministe, pas de 429 parasite).
+    RATELIMIT_ENABLED = False
     SQLALCHEMY_DATABASE_URI = _normalize_db_url(os.getenv(
         "TEST_DATABASE_URL", "postgresql+psycopg://xschool:xschool@localhost:5432/xschool_test"
     ))

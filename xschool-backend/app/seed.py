@@ -141,7 +141,7 @@ def seed(slug, reset, superadmin_email, superadmin_password):
     if school is None:
         school = School(name="College & Lycee Horizon", slug=slug)
         school.config = SchoolConfig(
-            mentions=_MENTIONS, bulletin_fmt_by_cycle={},
+            mentions=_MENTIONS, bulletin_fmt_by_cycle={}, periods={},
             grade_max=20, pass_mark=10, avg_mode="weighted", avg_decimals=2,
             phone="+228 22 00 00 00", email="contact@horizon.test",
             address="Boulevard du 13 janvier, Lome", director="M. Komlan A.",
@@ -161,16 +161,17 @@ def seed(slug, reset, superadmin_email, superadmin_password):
     sid = school.id
 
     # 3) admin + surveillant -------------------------------------------------
-    def _ensure_user(email, role, name):
+    def _ensure_user(email, role, name, login=None):
         u = db.session.query(User).filter(User.email == email).first()
         if u is None:
-            u = User(email=email, role=role, full_name=name, school_id=sid)
+            u = User(email=email, role=role, full_name=name, school_id=sid, login=login)
             u.set_password("passer1234")
             db.session.add(u)
         return u
 
-    admin = _ensure_user("admin@horizon.test", ROLE_ADMIN, "Admin Horizon")
-    _ensure_user("surveillant@horizon.test", ROLE_SUPERVISOR, "Surveillant General")
+    admin = _ensure_user("admin@horizon.test", ROLE_ADMIN, "Admin Horizon", login="admin.horizon")
+    _ensure_user("surveillant@horizon.test", ROLE_SUPERVISOR, "Surveillant General",
+                 login="surveillant.horizon")
     db.session.flush()
 
     # 4) cycles --------------------------------------------------------------
@@ -318,7 +319,7 @@ def seed(slug, reset, superadmin_email, superadmin_password):
     click.echo(f"  Eleves     : {n_students} | Notes : {n_grades}")
     click.echo("  Comptes    :")
     click.echo(f"    superadmin -> {superadmin_email} / {superadmin_password}")
-    click.echo("    admin      -> admin@horizon.test / passer1234")
+    click.echo("    admin      -> admin@horizon.test (ou login: admin.horizon) / passer1234")
     click.echo("    surveillant-> surveillant@horizon.test / passer1234")
 
 

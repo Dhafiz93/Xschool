@@ -7,7 +7,7 @@ from ..models.user import ROLE_ADMIN, ROLE_SUPERVISOR, ROLE_TEACHER
 from ..utils.security import role_required
 from ..utils.tenant import get_scoped_or_404, scoped_query
 from . import api_bp
-from .common import STAFF, arg, body, commit, err, intval, write_school_id
+from .common import STAFF, arg, body, commit, err, intval, log_action, write_school_id
 
 _STATUS = {"present", "retard", "absent"}
 
@@ -65,11 +65,15 @@ def save_attendance():
             if e:
                 return err(e)
             out.append(a)
+        log_action("save_attendance", "attendance",
+                   f"{len(out)} appel(s) enregistre(s)")
         commit()
         return jsonify(items=[_dict(a) for a in out]), 201
     a, e = _save_one(data, sid)
     if e:
         return err(e)
+    log_action("save_attendance", "attendance",
+               f"classe {a.class_id} / {a.date}")
     commit()
     return jsonify(attendance=_dict(a)), 201
 
@@ -78,6 +82,8 @@ def save_attendance():
 @role_required(ROLE_ADMIN, ROLE_TEACHER, ROLE_SUPERVISOR)
 def delete_attendance(att_id):
     a = get_scoped_or_404(Attendance, att_id)
+    log_action("delete_attendance", "attendance",
+               f"classe {a.class_id} / {a.date}")
     db.session.delete(a)
     commit()
     return jsonify(status="ok")

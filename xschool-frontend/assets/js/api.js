@@ -75,8 +75,16 @@
     if(ct.indexOf('application/json')>=0){ try{ data=await res.json(); }catch(e){} }
     else { try{ data=await res.text(); }catch(e){} }
     if(!res.ok){
-      var msg=(data&&data.error)||(data&&data.message)||('Erreur '+res.status);
-      var e2=new Error(msg); e2.status=res.status; e2.data=data; throw e2;
+      var code=(data&&data.error)||'';
+      var msg=(data&&data.message)||(data&&data.error)||('Erreur '+res.status);
+      // Session JWT expiree / absente / invalide : on nettoie la session locale et
+      // on signale globalement pour renvoyer l'utilisateur vers l'ecran de connexion.
+      if((res.status===401||res.status===422) && (code==='token_expire'||code==='token_absent'||code==='token_invalide')){
+        msg=(code==='token_invalide')?'Session invalide, reconnecte-toi.':'Session expiree, reconnecte-toi.';
+        try{ setToken(''); setUser(null); }catch(e){}
+        try{ if(typeof window!=='undefined' && window.dispatchEvent){ window.dispatchEvent(new CustomEvent('xschool:auth-expired',{ detail:{ code:code } })); } }catch(e){}
+      }
+      var e2=new Error(msg); e2.status=res.status; e2.code=code; e2.data=data; throw e2;
     }
     return data;
   }
@@ -94,8 +102,9 @@
     del:  function(p){ return req('DELETE', p); },
 
     // --- auth ---
-    async login(email, password){
-      var d=await req('POST','/auth/login',{ email:email, password:password }, false);
+    // `identifier` accepte l'email OU le login.
+    async login(identifier, password){
+      var d=await req('POST','/auth/login',{ identifiant:identifier, password:password }, false);
       if(d && d.access_token){ setToken(d.access_token); setUser(d.user||null); }
       return d; // {access_token, user}
     },
@@ -106,12 +115,38 @@
     logout: function(){ setToken(''); setUser(null); },
 
     // --- etablissements (superadmin) ---
+    // Liste PUBLIQUE des etablissements actifs (pre-login, sans JWT).
+    publicSchools: function(){ return req('GET','/auth/schools', null, false); }, // {items:[{id,name,slug}]}
     listSchools: function(){ return req('GET','/api/schools'); },          // {items:[...]}
-    createSchool: function(payload){ return req('POST','/api/schools', payload||{}); }, // {school}
+    // Etablissement du compte connecte (tout role). -> {school} ou {school:null}
+    currentSchool: function(){ return req('GET','/api/schools/current'); },
+    // Sauvegarde les reglages (config) de l'etablissement de l'admin connecte.
+    // payload: { config:{...}, name?:string } ou directement les cles de config. -> {school}
+    updateCurrentSchoolConfig: function(payload){ return req('PUT','/api/schools/current/config', payload||{}); },
+    // Variante superadmin : config d'une ecole precise. -> {school}
+    updateSchoolConfig: function(sid, payload){ return req('PUT','/api/schools/'+encodeURIComponent(sid)+'/config', payload||{}); },
+    // payload: { name, slug?, admin?:{ full_name, email, login?, password } }
+    createSchool: function(payload){ return req('POST','/api/schools', payload||{}); }, // {school, admin?}
+    // Ajoute un administrateur a une ecole existante.
+    // payload: { full_name, email, login?, password }
+    createSchoolAdmin: function(sid, payload){ return req('POST','/api/schools/'+encodeURIComponent(sid)+'/admin', payload||{}); }, // {admin}
+
+    // --- utilisateurs (comptes) ---
+    // superadmin : params {school_id} pour ne voir qu'une ecole (sinon toutes).
+    // admin : toujours confine a son ecole (le param est ignore cote serveur).
+    listUsers: function(params){ return req('GET','/api/users'+qs(params)); },   // {items:[...]}
+    // Cree un compte avec mot de passe (admin -> sa propre ecole).
+    // payload: { full_name, email, password, role?, login?, school_id? } -> {user}
+    createUser: function(payload){ return req('POST','/api/users', payload||{}); },
+    // Active/desactive un compte : payload {active:bool}. -> {user}
+    updateUser: function(id, payload){ return req('PATCH','/api/users/'+encodeURIComponent(id), payload||{}); },
+    // Supprime un compte. -> {status:'ok', id}
+    deleteUser: function(id){ return req('DELETE','/api/users/'+encodeURIComponent(id)); },
 
     // --- classes (admin, scope school_id) ---
     listClasses: function(){ return req('GET','/api/classes'); },          // {items:[...]}
     createClass: function(payload){ return req('POST','/api/classes', payload||{}); }, // {klass}
+    updateClass: function(id,payload){ return req('PUT','/api/classes/'+encodeURIComponent(id), payload||{}); }, // {klass} (ex: titulaire_id)
     deleteClass: function(id){ return req('DELETE','/api/classes/'+encodeURIComponent(id)); }, // {status}
     classCards: function(id){ return req('GET','/api/classes/'+encodeURIComponent(id)+'/cards'); }, // {school,klass,year,cards:[...]}
 
@@ -145,11 +180,22 @@
     listGrades: function(params){ return req('GET','/api/grades'+qs(params)); },             // {items:[...]}
     saveGrades: function(payload){ return req('POST','/api/grades', payload||{}); },         // {grade} ou {items:[...]}
     deleteGrade: function(id){ return req('DELETE','/api/grades/'+encodeURIComponent(id)); }, // {status}
+    // Import / export Excel des notes (modele .xlsx telecharge puis re-televerse).
+    gradesTemplate: function(params){ return req('GET','/api/grades/template'+qs(params)); }, // {filename,mime,data_b64,count}
+    gradesImport: function(payload){ return req('POST','/api/grades/import', payload||{}); }, // {items,saved,skipped}
+
+    // --- espace eleve : vue agregee en lecture seule du compte connecte ---
+    overview: function(){ return req('GET','/api/me/overview'); }, // {student,classes,programs,subjects,grades,attendance,payments}
 
     // --- appel / presences ---
     listAttendance: function(params){ return req('GET','/api/attendance'+qs(params)); },     // {items:[...]}
     saveAttendance: function(payload){ return req('POST','/api/attendance', payload||{}); }, // {attendance} ou {items:[...]}
     deleteAttendance: function(id){ return req('DELETE','/api/attendance/'+encodeURIComponent(id)); }, // {status}
+
+    // --- pointage enseignants ---
+    listTeacherAttendance: function(params){ return req('GET','/api/teacher-attendance'+qs(params)); },     // {items:[...]}
+    saveTeacherAttendance: function(payload){ return req('POST','/api/teacher-attendance', payload||{}); }, // {attendance} ou {items:[...]}
+    deleteTeacherAttendance: function(id){ return req('DELETE','/api/teacher-attendance/'+encodeURIComponent(id)); }, // {status}
 
     // --- discipline ---
     listDiscipline: function(params){ return req('GET','/api/discipline'+qs(params)); },     // {items:[...]}
@@ -164,12 +210,59 @@
     // --- journal d'audit (lecture seule) ---
     listLogs: function(params){ return req('GET','/api/logs'+qs(params)); },                 // {items:[...]}
 
+    // --- notifications WhatsApp / SMS (passerelle serveur) ---
+    // Etat de la passerelle + canaux actives de l'ecole.
+    // -> {gateway:{provider,configured,whatsapp,sms,simulation}, school:{...}, can_send}
+    notifyStatus: function(){ return req('GET','/api/notify/status'); },
+    // Envoie un message a une cible via le serveur (sans clic du destinataire).
+    // payload: { channel:'whatsapp'|'sms', message, target:'all|class|nouveaux|redoublants|teachers', class_id?, year? }
+    // -> {status,channel,target,provider,simulation,total,sans_numero,sent,simulated,failed,recipients:[...]}
+    notifySend: function(payload){ return req('POST','/api/notify/send', payload||{}); },
+
+    // --- notifications en page (cloche) de l'utilisateur connecte ---
+    // Liste des notifications (option {unread:1, limit:N}). -> {items:[...],unread}
+    notifications: function(params){ return req('GET','/api/notifications'+qs(params)); },
+    // Nombre de non-lues, pour la pastille. -> {unread}
+    notificationsCount: function(){ return req('GET','/api/notifications/count'); },
+    // Marque lues : ids = tableau pour un sous-ensemble, sinon toutes. -> {ok,marked}
+    notificationsRead: function(ids){ return req('POST','/api/notifications/read', (ids&&ids.length)?{ids:ids}:{}); },
+
+    // --- notifications push (jetons d'appareil : PWA / mobile) ---
+    // Enregistre/reactive le jeton de cet appareil. -> {ok}
+    pushSubscribe: function(token,platform){ return req('POST','/api/push/subscribe', { token:token, platform:platform||'web' }); },
+    // Desinscrit ce jeton (desactive cote serveur). -> {ok}
+    pushUnsubscribe: function(token){ return req('POST','/api/push/unsubscribe', { token:token }); },
+    // Etat du transport push (diagnostic, sans secret). -> {provider,configured,...}
+    pushStatus: function(){ return req('GET','/api/push/status'); },
+
     // --- statistiques de resultats (calcul serveur) ---
     statsGlobal: function(params){ return req('GET','/api/stats/global'+qs(params)); },      // {year,scope,total,...,rows:[...]}
     statsClass: function(id,params){ return req('GET','/api/stats/class/'+encodeURIComponent(id)+qs(params)); }, // {year,scope,total,...,list:[...]}
+    statsSynthesis: function(params){ return req('GET','/api/stats/synthesis'+qs(params)); }, // {year,scope,classes,...,rows:[...]}
+
+    // --- supervision : connexions (reussite/echec/causes) + comptes par profil ---
+    statsConnexions: function(params){ return req('GET','/api/stats/connexions'+qs(params)); }, // {jours,global:{...},etablissements:[...]}
+    statsUsers: function(params){ return req('GET','/api/stats/users'+qs(params)); },           // {total,global:{<role>:n},etablissements:[...]}
 
     // --- bulletins annuels (agregation periodes + annuel + rangs, miroir serveur) ---
-    bulletinYear: function(id,params){ return req('GET','/api/bulletins/class/'+encodeURIComponent(id)+qs(params)); } // {year,periods,subjects,students:[...],periodStats,annualStats}
+    bulletinYear: function(id,params){ return req('GET','/api/bulletins/class/'+encodeURIComponent(id)+qs(params)); }, // {year,periods,subjects,students:[...],periodStats,annualStats}
+
+    // --- rendu PDF 100% serveur (WeasyPrint). Renvoie un Blob telechargeable. ---
+    // Le client envoie le HTML de l'apercu ; le serveur fait la mise en page.
+    async renderPdf(html, filename){
+      var b=base(); if(!b){ var e0=new Error('API non configuree'); e0.code='no_api'; throw e0; }
+      var headers={ 'Accept':'application/pdf', 'Content-Type':'application/json' };
+      var t=token(); if(t) headers['Authorization']='Bearer '+t;
+      var res;
+      try{ res=await fetch(b+'/api/print/pdf', { method:'POST', headers:headers, body:JSON.stringify({ html:html, filename:filename||'' }) }); }
+      catch(err){ var e1=new Error('Reseau indisponible'); e1.code='network'; throw e1; }
+      if(!res.ok){
+        var msg='Erreur '+res.status;
+        try{ var j=await res.json(); if(j&&(j.error||j.detail)) msg=(j.error||'')+(j.detail?(' : '+j.detail):''); }catch(e){}
+        var e2=new Error(msg); e2.status=res.status; throw e2;
+      }
+      return await res.blob();
+    }
   };
 
   try{ window.API=API; }catch(e){}

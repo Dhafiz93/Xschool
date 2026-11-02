@@ -4,24 +4,28 @@
   const el = (t,c,h) => { const e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e; };
 
   // ---------- ICONS ----------
+  // Jeu d'icones standard "developpeur" (Feather Icons / Lucide, MIT) : trace a
+  // 24x24, contour uniquement (fill=none, stroke=currentColor), coins arrondis.
+  // Compatible tel quel avec le wrapper svg() ci-dessous.
   const I = {
-    home:'<path d="M3 10.5 12 3l9 7.5V21a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/>',
-    users:'<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0112 0M16 7a3 3 0 010 6M15 20a6 6 0 016-5"/>',
-    teacher:'<path d="M12 3 2 8l10 5 8-4v6"/><path d="M6 11v4c0 1.5 2.7 3 6 3s6-1.5 6-3v-4"/>',
-    grade:'<path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/>',
-    cash:'<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/>',
-    cal:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',
-    bell:'<path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21a2 2 0 004 0"/>',
-    chart:'<path d="M4 19V5M4 19h16M8 15v-4M12 15V8M16 15v-6"/>',
-    cog:'<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.2-1.6l2-1.5-2-3.4-2.3 1a7 7 0 00-2.7-1.6L13.5 2h-3l-.3 2.3A7 7 0 007.5 6l-2.3-1-2 3.4 2 1.5A7 7 0 005 12c0 .5 0 1 .2 1.6l-2 1.5 2 3.4 2.3-1a7 7 0 002.7 1.6l.3 2.3h3l.3-2.3a7 7 0 002.7-1.6l2.3 1 2-3.4-2-1.5c.2-.5.2-1 .2-1.6z"/>',
-    book:'<path d="M4 4h9a3 3 0 013 3v13a2 2 0 00-2-2H4z"/><path d="M20 4h-3a3 3 0 00-3 3v13a2 2 0 012-2h4z"/>',
-    check:'<path d="M4 12l5 5L20 6"/>',
-    shield:'<path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/>',
-    doc:'<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v4h4M9 13h6M9 17h6"/>',
-    clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-    trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/>',
-    plus:'<path d="M12 5v14M5 12h14"/>',
-    edit:'<path d="M4 20h4L18.5 9.5l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'
+    home:'<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+    users:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    teacher:'<path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 2 6 2s6-1 6-2v-5"/><path d="M22 10v6"/>',
+    grade:'<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h6M8.5 12h.01M8.5 16h.01"/>',
+    cash:'<rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>',
+    cal:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+    bell:'<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+    chart:'<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
+    cog:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    book:'<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+    check:'<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+    shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>',
+    doc:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>',
+    clock:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+    plus:'<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    edit:'<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>',
+    lock:'<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
   };
   const svg = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">${p}</svg>`;
   // ---------- ROLE CONFIG (espaces distincts) ----------
@@ -31,10 +35,10 @@
       nav:['dash','users','schools','logs','settings'] },
     admin:   { tag:'Administration', name:'M. Dupont', email:'direction@lyceemoderne.tg', badge:'bg-brand-600',
       icon:I.cog, grad:'from-brand-600 to-indigo-500', desc:'Direction, scolarité, emplois du temps, validation des notes.',
-      nav:['dash','manage','timetable','grades','bulletins','cartes','feuilles','stats','notify','absstats','settings'] },
+      nav:['dash','manage','users','timetable','grades','bulletins','cartes','feuilles','stats','notify','absstats','logs','settings'] },
     teacher: { tag:'Enseignant', name:'Mme Sarr', email:'sarr@lyceemoderne.tg', badge:'bg-emerald-500',
       icon:I.teacher, grad:'from-emerald-500 to-teal-600', desc:'Mes classes, saisie des notes, mes heures, emploi du temps.',
-      nav:['dash','classes','grades','myhours','timetable'] },
+      nav:['dash','classes','grades','myhours','timetable','profile'] },
     surveillant:{ tag:'Surveillant', name:'M. Ba', email:'surveillance@lyceemoderne.tg', badge:'bg-sky-500',
       icon:I.check, grad:'from-sky-600 to-brand-700', desc:'Appel, pointage des enseignants, discipline, alertes parents.',
       nav:['dash','appel','pointage','timetable','discipline','absstats','notify'] },
@@ -43,11 +47,11 @@
       nav:['dash','finance','payments','schedules','reports'] },
     student: { tag:'Élève / Parent', name:'K. Mensah', email:'parent.mensah@gmail.com', badge:'bg-rose-500',
       icon:I.book, grad:'from-slate-600 to-slate-800', desc:'Notes en direct, bulletins, emploi du temps, scolarité.',
-      nav:['dash','bulletin','timetable','attendance','fees'] }
+      nav:['dash','bulletin','timetable','attendance','fees','profile'] }
   };
   const NAV = {
     dash:{t:'Accueil',i:I.home}, users:{t:'Utilisateurs',i:I.users}, schools:{t:'Établissements',i:I.shield},
-    logs:{t:'Journaux',i:I.doc}, settings:{t:'Paramètres',i:I.cog}, students:{t:'Élèves',i:I.users},
+    logs:{t:'Historique',i:I.doc}, settings:{t:'Paramètres',i:I.cog}, students:{t:'Élèves',i:I.users},
     finance:{t:'Scolarité',i:I.cash}, timetable:{t:'Emploi',i:I.cal}, notify:{t:'Alertes',i:I.bell},
     classes:{t:'Classes',i:I.teacher}, grades:{t:'Notes',i:I.grade}, pointage:{t:'Pointage',i:I.clock},
     bulletin:{t:'Bulletin',i:I.book}, attendance:{t:'Présence',i:I.check}, fees:{t:'Frais',i:I.cash},
@@ -56,10 +60,11 @@
     myhours:{t:'Mes heures',i:I.clock}, manage:{t:'Gestion',i:I.cog}, bulletins:{t:'Bulletins',i:I.book},
     cartes:{t:'Cartes scolaires',i:I.users},
     feuilles:{t:'Feuilles de présence',i:I.doc},
-    stats:{t:'Statistiques résultats',i:I.chart}
+    stats:{t:'Statistiques résultats',i:I.chart},
+    profile:{t:'Mon profil',i:I.users}
   };
 
-  const state = { screen:'tenant', role:'admin', view:'dash', schoolId:'sc1', tenant:'', manageTab:'eleves', manageForm:'', mgStuOpen:'', mgStuMode:'classe', mgStuEdit:'', mgStuAssign:'', mgStatYear:'', mgPhoto:'', stuSearch:'', stuFilterCls:'all', mgEnsOpen:'', mgEnsEdit:'', mgEnsPhoto:'', alCat:'absence', alTarget:'all', alChannel:'sms', mgCycle:'', mgDip:'CAP', ttTScope:'mine', ttTClsIdx:0, ttScope:'class', ttCycle:'Lycée Moderne', ttIdx:0, ttGroup:'', ttEdit:false, year:'2025-2026', grCls:'', grSub:'', grPeriod:0, mgUserOpen:'', mgProgEdit:'', payOpen:false, payMode:'especes', payDraft:{}, paySearch:'', blCls:'', blPeriod:0, cartesCls:'', feuillesCls:'', feuillesCols:15, statTab:'classe', statCls:'', statIdx:-1, statGIdx:-1, statSIdx:-1, suSchool:'all', suRole:'all', logQ:'', logLevel:'all', logSchool:'all', alBannerCls:'all', absStatPeriod:'month' };
+  const state = { screen:'tenant', role:'admin', view:'dash', schoolId:'sc1', tenant:'', manageTab:'annee', manageForm:'', mgStuOpen:'', mgStuMode:'classe', mgStuEdit:'', mgStuAssign:'', mgStatYear:'', mgPhoto:'', stuSearch:'', stuFilterCls:'all', mgEnsOpen:'', mgEnsEdit:'', mgEnsPhoto:'', alCat:'absence', alTarget:'all', alChannel:'sms', mgCycle:'', mgDip:'CAP', ttTScope:'mine', ttTClsIdx:0, ttScope:'class', ttCycle:'Lycée Moderne', ttIdx:0, ttGroup:'', ttClsId:'', ttTeachId:'', ttEdit:false, year:'2025-2026', grCls:'', grSub:'', grPeriod:0, mgUserOpen:'', mgProgEdit:'', payOpen:false, payMode:'especes', payDraft:{}, paySearch:'', blCls:'', blPeriod:0, cartesCls:'', feuillesCls:'', feuillesCols:15, statTab:'classe', statCls:'', statIdx:-1, statGIdx:-1, statSIdx:-1, suSchool:'all', suRole:'all', logQ:'', logLevel:'all', logSchool:'all', alBannerCls:'all', absStatPeriod:'month' };
 
   // ---------- UI HELPERS ----------
   const badge = (txt,cls) => `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${cls}">${txt}</span>`;
@@ -71,12 +76,105 @@
   const section = (title,extra='') => `<div class="flex items-center justify-between mt-6 mb-2"><h3 class="font-bold">${title}</h3>${extra}</div>`;
   const row = (a,b,c) => `<div class="flex items-center gap-3 p-3 rounded-2xl bg-white dark:bg-slate-900 shadow-soft card-in">${a}<div class="flex-1 min-w-0">${b}</div>${c||''}</div>`;
   const listWrap = h => `<div class="space-y-2 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3">${h}</div>`;
-  const avatar = n => `<img src="https://i.pravatar.cc/80?img=${n}" class="w-10 h-10 rounded-xl" alt="">`;
+  // ---------- AVATARS (initiales generees localement) ----------
+  // Plus de service externe aleatoire (i.pravatar) : on derive des initiales a
+  // partir du nom + une couleur de fond deterministe (meme nom => meme couleur).
+  function initials(name){
+    const parts=(''+(name==null?'':name)).trim().split(/\s+/).filter(Boolean);
+    if(!parts.length) return '?';
+    if(parts.length===1) return parts[0].slice(0,2).toUpperCase();
+    return (parts[0][0]+parts[parts.length-1][0]).toUpperCase();
+  }
+  const AVA_COLORS=['#4f46e5','#0891b2','#059669','#d97706','#dc2626','#db2777','#7c3aed','#2563eb','#0d9488','#ea580c'];
+  function avaColor(name){ const s=''+(name==null?'':name); let h=0; for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))>>>0; } return AVA_COLORS[h%AVA_COLORS.length]; }
+  // avatar(nom, classes?) -> pastille d'initiales. `classes` permet d'ajuster la
+  // taille/forme (defaut : carre arrondi 40px, comme l'ancien rendu).
+  const avatar = (name,cls) => `<span class="${cls||'w-10 h-10'} rounded-xl grid place-items-center font-extrabold text-white shrink-0" style="background:${avaColor(name)}" title="${escH(name)}" aria-label="${escH(name)}">${escH(initials(name))}</span>`;
   const escH=v=>(''+(v==null?'':v)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   function toast(msg){
     let t=document.getElementById('toast');
     if(!t){ t=document.createElement('div'); t.id='toast'; t.className='fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold shadow-soft opacity-0 transition-opacity pointer-events-none'; document.body.appendChild(t); }
     t.textContent=msg; t.classList.remove('opacity-0'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.add('opacity-0'),2200);
+  }
+
+  // ---------- CHAMPS OBLIGATOIRES + CONTROLES DE SAISIE ----------
+  // Petite etoile rouge placee DEVANT le libelle d'un champ obligatoire.
+  // Reutilisee tel quel dans tous les formulaires : `${RQ} Nom`.
+  const RQ='<span class="text-rose-500 font-bold mr-0.5" title="Champ obligatoire" aria-hidden="true">*</span>';
+
+  // Chaque controle renvoie '' si la valeur est acceptable (vide compris quand le
+  // champ est facultatif), sinon un message d'erreur en francais pret pour toast().
+
+  // Date de naissance : vraie date, ni dans le futur, ni avant 1900. Vide = accepte.
+  function errDob(v){
+    v=(v==null?'':(''+v)).trim();
+    if(!v) return '';
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(v)) return 'Date de naissance invalide (format attendu : AAAA-MM-JJ).';
+    const parts=v.split('-'), y=+parts[0], m=+parts[1], day=+parts[2];
+    const d=new Date(v+'T00:00:00');
+    if(isNaN(d.getTime())||d.getFullYear()!==y||(d.getMonth()+1)!==m||d.getDate()!==day) return 'Date de naissance invalide (jour inexistant).';
+    const today=new Date(); today.setHours(0,0,0,0);
+    if(d.getTime()>today.getTime()) return 'La date de naissance ne peut pas être dans le futur.';
+    if(y<1900) return 'Date de naissance invalide (année trop ancienne).';
+    return '';
+  }
+  // Numero de telephone : chiffres et signes + ( ) - . espaces ; de 6 a 15 chiffres. Vide = accepte.
+  function errTel(v,label){
+    v=(v==null?'':(''+v)).trim(); label=label||'Le numéro de téléphone';
+    if(!v) return '';
+    if(!/^[0-9+()\-.\s]+$/.test(v)) return label+' ne doit contenir que des chiffres et les signes + ( ) - .';
+    const digits=v.replace(/\D/g,'');
+    if(digits.length<6) return label+' est trop court (au moins 6 chiffres).';
+    if(digits.length>15) return label+' est trop long (15 chiffres maximum).';
+    return '';
+  }
+  // Montant numerique strictement positif (chiffres uniquement).
+  function errAmount(v){
+    v=(v==null?'':(''+v)).trim();
+    if(!v) return 'Le montant est obligatoire.';
+    if(!/^\d+(?:[.,]\d+)?$/.test(v)) return 'Le montant doit être un nombre (chiffres uniquement).';
+    const n=+v.replace(',','.');
+    if(!isFinite(n)||n<=0) return 'Le montant doit être un nombre supérieur à 0.';
+    return '';
+  }
+  // Date generique valide. allowFuture=false => interdit une date future. Vide = accepte.
+  function errDate(v,label,allowFuture){
+    v=(v==null?'':(''+v)).trim(); label=label||'La date';
+    if(!v) return '';
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(v)) return label+' est invalide (format attendu : AAAA-MM-JJ).';
+    const parts=v.split('-'), y=+parts[0], m=+parts[1], day=+parts[2];
+    const d=new Date(v+'T00:00:00');
+    if(isNaN(d.getTime())||d.getFullYear()!==y||(d.getMonth()+1)!==m||d.getDate()!==day) return label+' est invalide.';
+    if(!allowFuture){ const today=new Date(); today.setHours(0,0,0,0); if(d.getTime()>today.getTime()) return label+' ne peut pas être dans le futur.'; }
+    return '';
+  }
+  // Renvoie le 1er message non vide d'une liste de controles, '' si tout est bon.
+  function firstErr(){ for(var i=0;i<arguments.length;i++){ if(arguments[i]) return arguments[i]; } return ''; }
+
+  // ---------- TELECHARGEMENT FIABLE ----------
+  // Declenche un telechargement de fichier de maniere robuste et cross-navigateur.
+  // On passe TOUJOURS par un Blob + une ancre AJOUTEE AU DOM puis revoquee :
+  //  - les URI "data:" sur une ancre detachee sont bloquees/ignorees par
+  //    plusieurs navigateurs (Firefox exige l'ancre dans le DOM) et echouent
+  //    au-dela de quelques Mo (limite de longueur des data-URL) -> d'ou les
+  //    "liens de telechargement qui ne marchent pas".
+  // `content` peut etre une chaine ou un Blob deja construit.
+  function downloadFile(filename, content, mime){
+    try{
+      const blob = (content instanceof Blob)
+        ? content
+        : new Blob([content], { type: mime || 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename || 'export'; a.style.display = 'none';
+      a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} }, 1500);
+      return true;
+    }catch(e){
+      if(typeof toast==='function') toast('Téléchargement impossible : '+((e&&e.message)||'erreur'));
+      return false;
+    }
   }
   // Notification email automatique (simulation prototype) après validation d'un compte
   function mailSentModal(u){

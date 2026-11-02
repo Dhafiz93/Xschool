@@ -1,0 +1,13 @@
+/* XSchool — styles applicatifs (extraits du prototype) */
+  :root{ --safe: env(safe-area-inset-bottom, 0px); }
+  *{-webkit-tap-highlight-color:transparent}
+  body{font-family:'Plus Jakarta Sans',Inter,sans-serif}
+  .glass{ background:rgba(255,255,255,.72); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
+  .dark .glass{ background:rgba(17,24,39,.72); }
+  .noscroll{overflow:hidden}
+  .tab-ind{transition:transform .35s cubic-bezier(.4,0,.2,1)}
+  .fade{animation:fade .4s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .card-in{animation:cardIn .5s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes cardIn{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+  ::-webkit-scrollbar{width:0;height:0}

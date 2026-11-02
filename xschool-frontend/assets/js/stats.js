@@ -32,7 +32,7 @@
     const cls=getCls(clsId); const cfg=schoolCfg(); const pass=+cfg.passMark||10;
     const pers=cls?statPeriods(cls.cycle):[];
     const graded = (idx===-1) || (idx>=0 && idx<pers.length);
-    const studs=DB.students.filter(e=>e.cls===clsId);
+    const studs=studentsInClass(clsId);
     const moyMap=graded?statMoyMap(clsId,idx):{};
     let f=0,m=0,ab=0,re=0,ec=0; const list=[];
     studs.forEach(e=>{
@@ -130,6 +130,44 @@
     }
     return null;
   }
+  // Adapte la reponse /api/stats/synthesis a la forme attendue par statsSynthesis().
+  // Resout les objets classe front depuis DB.classes (comme _adaptSchool).
+  function _adaptSynth(s,idx){
+    const findCls=(cid,nm,cy,gp)=>DB.classes.find(c=>classApiId(c)===cid)||{id:'c'+cid,name:nm,cycle:cy||'',grp:gp||''};
+    const scope=s.scope||(idx===-1?'Annuel':'Periode '+(idx+1));
+    const rows=(s.rows||[]).map(r=>({
+      cls:findCls(r.class_id,r.name,r.cycle,r.grp), idx:idx, graded:!!r.graded,
+      total:r.total|0, abandon:r.abandon|0, noted:r.noted|0,
+      avg:(r.avg==null?null:r.avg), min:(r.min==null?null:r.min), max:(r.max==null?null:r.max),
+      reussi:r.reussi|0, taux:(r.taux==null?null:r.taux),
+      mentions:r.mentions||{}, top:(r.top?{name:r.top.name,moy:r.top.moy}:null),
+      rank:(r.rank==null?null:r.rank), scopeLabel:r.scope||scope
+    }));
+    return { idx:idx, rows:rows, classes:s.classes|0,
+      totalEff:s.totalEff|0, abandonTotal:s.abandonTotal|0,
+      notedTotal:s.notedTotal|0, reussiTotal:s.reussiTotal|0,
+      schoolAvg:(s.schoolAvg==null?null:s.schoolAvg), taux:(s.taux==null?null:s.taux),
+      best:(s.best?{cls:findCls(s.best.class_id,s.best.name),avg:s.best.avg}:null),
+      weak:(s.weak?{cls:findCls(s.weak.class_id,s.weak.name),avg:s.weak.avg}:null),
+      scopeLabel:scope };
+  }
+
+  // Resout la synthese par classe : API (cache + fetch async + re-render) ou local.
+  // Retourne null tant que le resultat serveur n'est pas pret (affiche un loader).
+  function resolveSynthData(idx){
+    if(!apiOn()) return statSchoolSynthesis(idx);
+    const key='s|'+idx+'|'+state.year;
+    if(STAT_CACHE[key]) return STAT_CACHE[key];
+    if(!STAT_CACHE[key+'|L']){ STAT_CACHE[key+'|L']=true;
+      API.statsSynthesis(_statParams(idx)).then(s=>{ STAT_CACHE[key]=_adaptSynth(s,idx); delete STAT_CACHE[key+'|L'];
+        if(state.view==='stats' && state.statTab==='synthese') renderView();
+      }).catch(e=>{ delete STAT_CACHE[key+'|L']; STAT_CACHE[key]=statSchoolSynthesis(idx);
+        if(typeof toast==='function') toast('Synthese : '+((e&&e.message)||'indisponible'));
+        if(state.view==='stats' && state.statTab==='synthese') renderView(); });
+    }
+    return null;
+  }
+
   // Resout les stats d'une classe (meme principe).
   function resolveClassData(clsId,idx){
     if(!apiOn()) return statClassData(clsId,idx);
@@ -148,6 +186,7 @@
   // Versions synchrones pour exports/impression : cache serveur si present, sinon local.
   function statSchoolDataNow(idx){ if(apiOn()){ const k='g|'+idx+'|'+state.year; if(STAT_CACHE[k]) return STAT_CACHE[k]; } return statSchoolData(idx); }
   function statClassDataNow(clsId,idx){ if(apiOn()){ const k='c|'+clsId+'|'+idx+'|'+state.year; if(STAT_CACHE[k]) return STAT_CACHE[k]; } return statClassData(clsId,idx); }
+  function statSchoolSynthesisNow(idx){ if(apiOn()){ const k='s|'+idx+'|'+state.year; if(STAT_CACHE[k]) return STAT_CACHE[k]; } return statSchoolSynthesis(idx); }
   // Vide le cache (apres une ecriture : abandon, changement d'annee...).
   function statInvalidateCache(){ for(const k in STAT_CACHE){ if(Object.prototype.hasOwnProperty.call(STAT_CACHE,k)) delete STAT_CACHE[k]; } }
 
@@ -158,12 +197,13 @@
     const tab=(state.statTab==='globale')?'globale':(state.statTab==='synthese')?'synthese':'classe';
     const tabChip=(id,label)=>'<button data-sttab="'+id+'" class="px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition '+(tab===id?'bg-brand-600 text-white shadow-soft':'bg-white dark:bg-slate-900 text-slate-500 shadow-soft')+'">'+label+'</button>';
     const tabBar='<div class="flex gap-2 mb-4 overflow-x-auto no-scrollbar">'+tabChip('classe','Par classe')+tabChip('synthese','Synthèse par classe')+tabChip('globale','Globales école')+'</div>';
+    const yearBadge='<div class="flex items-center gap-2 mb-3"><span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"><span class="w-3.5 h-3.5 inline-block">'+svg(I.cal)+'</span>Année scolaire : '+escH(state.year||'')+'</span></div>';
     const expBar='<div class="flex flex-wrap gap-2 mb-3">'
-      +'<button data-stpdf class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-rose-600 text-white shadow-soft">'+svg(I.doc)+'PDF</button>'
-      +'<button data-stxlsx class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white shadow-soft">'+svg(I.doc)+'Excel</button>'
-      +'<button data-stprint class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-700 dark:bg-slate-700 text-white shadow-soft">'+svg(I.doc)+'Imprimer</button>'
+      +'<button data-stpdf class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition">'+'<span class="w-3.5 h-3.5 inline-block">'+svg(I.doc)+'</span>'+'PDF</button>'
+      +'<button data-stxlsx class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition">'+'<span class="w-3.5 h-3.5 inline-block">'+svg(I.doc)+'</span>'+'Excel</button>'
+      +'<button data-stprint class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition">'+'<span class="w-3.5 h-3.5 inline-block">'+svg(I.doc)+'</span>'+'Imprimer</button>'
       +'</div>';
-    return tabBar + (tab==='classe'?statsByClass():tab==='synthese'?statsSynthesis():statsGlobal()) + '<div class="mt-4">'+expBar+'</div>';
+    return yearBadge + tabBar + (tab==='classe'?statsByClass():tab==='synthese'?statsSynthesis():statsGlobal()) + '<div class="mt-4">'+expBar+'</div>';
   }
 
   // Petite tuile colorée avec valeur + sous-titre (réutilise le style stat()).
@@ -300,7 +340,9 @@
     const perChip=(i,label)=>'<button data-stsidx="'+i+'" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition '+(state.statSIdx===i?'bg-brand-600 text-white':'bg-white dark:bg-slate-900 text-slate-500 shadow-soft')+'">'+label+'</button>';
     let scopeBar='<div class="flex gap-1.5 overflow-x-auto no-scrollbar mb-4">';
     for(let i=0;i<maxP;i++) scopeBar+=perChip(i,'Période '+(i+1)); scopeBar+=perChip(-1,'Annuel'); scopeBar+='</div>';
-    const s=statSchoolSynthesis(state.statSIdx); const gmax=fmtN(schoolCfg().gradeMax||20);
+    const s=resolveSynthData(state.statSIdx);
+    if(s==null) return scopeBar+_statLoading('Chargement de la synthèse par classe…');
+    const gmax=fmtN(schoolCfg().gradeMax||20);
     const tiles='<div class="grid grid-cols-2 gap-3 lg:grid-cols-3">'
       +statTile('Classes',s.classes,s.notedTotal+' élève(s) noté(s)','bg-brand-600')
       +statTile('Moyenne établissement',s.schoolAvg==null?'—':fmtN(s.schoolAvg),'sur '+gmax,'bg-indigo-500')
@@ -388,7 +430,7 @@
       d.rows.forEach(c=>{ const nonAb=c.total-c.abandon; aoa.push([clsLabel(c.cls.id),c.total,c.f,c.m,c.graded?c.reussi:'',c.graded?c.echoue:'',c.abandon,c.graded?(statPct(c.reussi,nonAb)+'%'):'']); });
       fname='stats_globales_'+_statSafe(sch.slug||'ecole')+'_'+_statSafe(state.year)+'.xlsx';
     } else if(state.statTab==='synthese'){
-      const s=statSchoolSynthesis(state.statSIdx); const gmax=fmtN(schoolCfg().gradeMax||20);
+      const s=statSchoolSynthesisNow(state.statSIdx); const gmax=fmtN(schoolCfg().gradeMax||20);
       const mLabels=(schoolCfg().mentions||[]).filter(m=>m.l).map(m=>m.l);
       title='Synthèse par classe';
       aoa=[[sch.name||'École'],['Synthèse comparative des classes · '+s.scopeLabel+' · '+state.year],[],
@@ -409,22 +451,26 @@
     }
     if(typeof XLSX!=='undefined'){ try{ const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=(aoa[aoa.length-1]||[]).map(()=>({wch:18})); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Stats'); XLSX.writeFile(wb,fname); toast('Statistiques exportées ✓'); return; }catch(err){} }
     const csv=aoa.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\n');
-    const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,\ufeff'+encodeURIComponent(csv); a.download=fname.replace('.xlsx','.csv'); a.click(); toast('Statistiques exportées (CSV) ✓');
+    downloadFile(fname.replace('.xlsx','.csv'), '\uFEFF'+csv, 'text/csv;charset=utf-8'); toast('Statistiques exportées (CSV) ✓');
   }
 
   // Export PDF (jsPDF) — portrait A4, en-tête école + tuiles résumé + tableau.
   function exportStatsPDF(){
     const J=(window.jspdf&&window.jspdf.jsPDF)?window.jspdf.jsPDF:(window.jsPDF||null);
     if(!J){ toast('Module PDF indisponible'); return; }
-    const sch=activeSchool(); const doc=new J({unit:'mm',format:'a4',orientation:'portrait'});
+    const sch=activeSchool(); const cfg=schoolCfg(); const doc=new J({unit:'mm',format:'a4',orientation:'portrait'});
     const PW=210, PH=297, M=14; const tableW=PW-2*M;
+    const _logo=cfg.logo||'';
     const glob=(state.statTab==='globale'); const syn=(state.statTab==='synthese');
-    const d=syn?statSchoolSynthesis(state.statSIdx):(glob?statSchoolDataNow(state.statGIdx):statClassDataNow(state.statCls,state.statIdx));
+    const d=syn?statSchoolSynthesisNow(state.statSIdx):(glob?statSchoolDataNow(state.statGIdx):statClassDataNow(state.statCls,state.statIdx));
     const sub=syn?'Synthèse par classe':(glob?('Statistiques globales'):('Classe : '+clsLabel(state.statCls)));
     function head(){
-      doc.setTextColor(17,17,17); doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.text(_pdfFit(doc,sch.name||'École',tableW),M,M+4);
+      let tx=M;
+      if(_logo){ try{ doc.addImage(_logo,'PNG',M,M-1,15,15); tx=M+18; }catch(e){ try{ doc.addImage(_logo,'JPEG',M,M-1,15,15); tx=M+18; }catch(e2){} } }
+      const tw2=tableW-(tx-M);
+      doc.setTextColor(17,17,17); doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.text(_pdfFit(doc,sch.name||'École',tw2),tx,M+4);
       doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(100,116,139);
-      if(sch.address||sch.phone) doc.text(_pdfFit(doc,[sch.address,sch.phone].filter(Boolean).join(' · '),tableW),M,M+9);
+      if(sch.address||sch.phone) doc.text(_pdfFit(doc,[sch.address,sch.phone].filter(Boolean).join(' · '),tw2),tx,M+9);
       doc.setTextColor(17,17,17); doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.text('STATISTIQUES DES RÉSULTATS',PW/2,M+17,{align:'center'});
       doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(60,60,60);
       doc.text(sub+'      Période : '+d.scopeLabel+'      Année : '+(state.year||''),M,M+24);
@@ -472,8 +518,8 @@
 
   // Impression : ouvre une fenêtre avec une version imprimable puis lance l'impression.
   function printStats(){
-    const sch=activeSchool(); const glob=(state.statTab==='globale'); const syn=(state.statTab==='synthese');
-    const d=syn?statSchoolSynthesis(state.statSIdx):(glob?statSchoolDataNow(state.statGIdx):statClassDataNow(state.statCls,state.statIdx));
+    const sch=activeSchool(); const _logo=(schoolCfg().logo)||''; const glob=(state.statTab==='globale'); const syn=(state.statTab==='synthese');
+    const d=syn?statSchoolSynthesisNow(state.statSIdx):(glob?statSchoolDataNow(state.statGIdx):statClassDataNow(state.statCls,state.statIdx));
     const sub=syn?'Synthèse par classe':(glob?'Statistiques globales':('Classe : '+escH(clsLabel(state.statCls))));
     const tiles=syn
       ? [['Classes',d.classes],['Moy. étab.',d.schoolAvg==null?'—':fmtN(d.schoolAvg)],['Notés',d.notedTotal],['Taux',d.taux==null?'—':d.taux+'%'],['Admis',d.reussiTotal],['Abandons',d.abandonTotal]]
@@ -493,9 +539,9 @@
       thead='<tr><th>N°</th><th class="l">Élève</th><th>Sexe</th><th>Moyenne</th><th>Résultat</th></tr>';
       tbody=d.list.map((it,i)=>'<tr><td>'+(i+1)+'</td><td class="l">'+escH(stuName(it.stu))+'</td><td>'+escH(it.sexe||'')+'</td><td>'+(it.moy==null?'–':escH(fmtN(it.moy)))+'</td><td>'+escH(_statResultLabel(it.result))+'</td></tr>').join('');
     }
-    const css='body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;}h1{font-size:18px;margin:0;}h2{font-size:13px;font-weight:normal;color:#555;margin:2px 0 0;}.meta{font-size:12px;color:#444;margin:8px 0 16px;}.tiles{display:flex;gap:8px;margin-bottom:16px;}.tile{flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:8px;text-align:center;}.tile span{display:block;font-size:10px;color:#64748b;}.tile strong{font-size:18px;}table{width:100%;border-collapse:collapse;font-size:12px;}th{background:#1f2937;color:#fff;padding:6px;text-align:center;}td{padding:5px 6px;border-bottom:1px solid #e5e7eb;text-align:center;}td.l,th.l{text-align:left;}tr:nth-child(even) td{background:#f5f7fa;}.ft{margin-top:14px;font-size:10px;color:#777;}@media print{button{display:none;}}';
+    const css='body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;}h1{font-size:18px;margin:0;}h2{font-size:13px;font-weight:normal;color:#555;margin:2px 0 0;}.meta{font-size:12px;color:#444;margin:8px 0 16px;}.tiles{display:flex;gap:8px;margin-bottom:16px;}.tile{flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:8px;text-align:center;}.tile span{display:block;font-size:10px;color:#64748b;}.tile strong{font-size:18px;}table{width:100%;border-collapse:collapse;font-size:12px;}th{background:#1f2937;color:#fff;padding:6px;text-align:center;}td{padding:5px 6px;border-bottom:1px solid #e5e7eb;text-align:center;}td.l,th.l{text-align:left;}tr:nth-child(even) td{background:#f5f7fa;}.ft{margin-top:14px;font-size:10px;color:#777;}.hdr{display:flex;align-items:center;gap:12px;}.hdr img{width:54px;height:54px;object-fit:contain;border-radius:8px;}.hdr .ht{flex:1;}@media print{button{display:none;}}';
     const html='<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Statistiques</title><style>'+css+'</style></head><body>'
-      +'<h1>'+escH(sch.name||'École')+'</h1>'+((sch.address||sch.phone)?'<h2>'+escH([sch.address,sch.phone].filter(Boolean).join(' · '))+'</h2>':'')
+      +'<div class="hdr">'+(_logo?'<img src="'+escH(_logo)+'" alt="logo">':'')+'<div class="ht"><h1>'+escH(sch.name||'École')+'</h1>'+((sch.address||sch.phone)?'<h2>'+escH([sch.address,sch.phone].filter(Boolean).join(' · '))+'</h2>':'')+'</div></div>'
       +'<div class="meta"><strong>Statistiques des résultats</strong> — '+sub+' · Période : '+escH(d.scopeLabel)+' · Année : '+escH(state.year||'')+'</div>'
       +'<div class="tiles">'+tilesHtml+'</div>'
       +'<table><thead>'+thead+'</thead><tbody>'+tbody+'</tbody></table>'

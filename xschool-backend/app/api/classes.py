@@ -5,26 +5,77 @@ from flask import jsonify, request
 
 from ..extensions import db
 from ..models.academics import SchoolClass
-from ..models.people import Student
+from ..models.people import Student, Teacher
 from ..models.school import School, SchoolConfig
 from ..models.user import ROLE_ADMIN
 from ..utils.security import role_required
-from ..utils.tenant import current_school_id, get_scoped_or_404, scoped_query
+from ..utils.tenant import (current_school_id, get_scoped_or_404,
+                            scoped_query, teacher_scope_ids)
 from . import api_bp
-from .common import STAFF
+from .common import STAFF, err, log_action
 
 
 def _cls_dict(c):
     return {
         "id": c.id, "cycle": c.cycle, "name": c.name,
         "grp": c.grp, "spec": c.spec,
+        "titulaire_id": c.titulaire_id,
+        "titulaires_by_year": c.titulaires_by_year or {},
     }
 
 
+def _apply_titulaire(c, tit, year):
+    """Applique l'affectation du titulaire a la classe `c`.
+
+    - Si `year` est fourni : l'affectation est scopee a cette annee scolaire
+      (map `titulaires_by_year`). `tit is None` retire le titulaire de l'annee.
+    - Sinon : on met a jour le titulaire "par defaut" (`titulaire_id`, retro-compat).
+    JSONB n'est pas suivi en mutation in-place -> on reaffecte un nouveau dict.
+    """
+    if year:
+        mapping = dict(c.titulaires_by_year or {})
+        if tit is None:
+            mapping.pop(year, None)
+        else:
+            mapping[year] = tit
+        c.titulaires_by_year = mapping
+    else:
+        c.titulaire_id = tit
+
+
+def _resolve_titulaire(data, school_id):
+    """Normalise la valeur `titulaire_id` du payload.
+
+    Renvoie (valeur, erreur). `valeur` vaut None (aucun titulaire) ou l'id d'un
+    enseignant appartenant a la meme ecole. Toute autre valeur => (None, reponse
+    d'erreur) pour empecher d'affecter un enseignant d'un autre etablissement.
+    """
+    if "titulaire_id" not in data:
+        return (False, None)  # champ absent : ne rien changer
+    raw = data.get("titulaire_id")
+    if raw in (None, "", 0, "0"):
+        return (None, None)   # titulaire retire
+    try:
+        tid = int(raw)
+    except (TypeError, ValueError):
+        return (None, err("titulaire_invalide"))
+    t = db.session.get(Teacher, tid)
+    if t is None or t.school_id != school_id:
+        return (None, err("titulaire_introuvable"))
+    return (tid, None)
+
+
 @api_bp.get("/classes")
-@role_required(ROLE_ADMIN)
+@role_required(*STAFF)
 def list_classes():
-    rows = scoped_query(SchoolClass).order_by(SchoolClass.cycle, SchoolClass.name).all()
+    q = scoped_query(SchoolClass)
+    # Un enseignant ne voit que les classes ou il intervient.
+    class_ids, _ = teacher_scope_ids()
+    if class_ids is not None:
+        if not class_ids:
+            return jsonify(items=[])
+        q = q.filter(SchoolClass.id.in_(class_ids))
+    rows = q.order_by(SchoolClass.cycle, SchoolClass.name).all()
     return jsonify(items=[_cls_dict(c) for c in rows])
 
 
@@ -44,15 +95,45 @@ def create_class():
         grp=(data.get("grp") or "").strip(),
         spec=(data.get("spec") or "").strip(),
     )
+    tit, tit_err = _resolve_titulaire(data, c.school_id)
+    if tit_err is not None:
+        return tit_err
+    if tit is not False:
+        _apply_titulaire(c, tit, (data.get("year") or "").strip())
     db.session.add(c)
+    log_action("create_class", "classes", f"{c.cycle} {c.name}".strip())
     db.session.commit()
     return jsonify(klass=_cls_dict(c)), 201
+
+
+@api_bp.put("/classes/<int:class_id>")
+@role_required(ROLE_ADMIN)
+def update_class(class_id):
+    """Met a jour une classe (notamment l'affectation du titulaire).
+
+    Les champs d'identite (name/grp/spec) sont modifiables si fournis ; le champ
+    `titulaire_id` affecte/retire l'enseignant titulaire (null ou 0 => retire).
+    """
+    c = get_scoped_or_404(SchoolClass, class_id)
+    data = request.get_json(silent=True) or {}
+    for f in ("name", "grp", "spec"):
+        if f in data:
+            setattr(c, f, (data.get(f) or "").strip())
+    tit, tit_err = _resolve_titulaire(data, c.school_id)
+    if tit_err is not None:
+        return tit_err
+    if tit is not False:
+        _apply_titulaire(c, tit, (data.get("year") or "").strip())
+    log_action("update_class", "classes", f"{c.cycle} {c.name}".strip())
+    db.session.commit()
+    return jsonify(klass=_cls_dict(c))
 
 
 @api_bp.delete("/classes/<int:class_id>")
 @role_required(ROLE_ADMIN)
 def delete_class(class_id):
     c = get_scoped_or_404(SchoolClass, class_id)
+    log_action("delete_class", "classes", f"{c.cycle} {c.name}".strip())
     db.session.delete(c)
     db.session.commit()
     return jsonify(status="ok")

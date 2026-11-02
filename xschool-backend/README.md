@@ -1,7 +1,7 @@
 # XSchool Backend
 
-API Flask + SQLAlchemy + Alembic (Flask-Migrate) + PostgreSQL pour l'EMS
-multi-ecoles XSchool. Squelette de depart : auth JWT, isolation multi-tenant
+API Flask + SQLAlchemy + Alembic (Flask-Migrate) + PostgreSQL pour
+L'ecole connectee XSchool (multi-etablissements). Squelette de depart : auth JWT, isolation multi-tenant
 par `school_id`, modeles derives du prototype front, commandes de seed.
 
 ## Stack
@@ -140,6 +140,34 @@ flask seed              # jeu de donnees de demo complet (idempotent)
 ```
 
 En production, prefere les migrations (`flask db migrate` / `flask db upgrade`).
+
+## Rappels automatiques J-1 (non-rendus)
+
+Une commande planifiable relance par cloche + email les eleves qui n'ont pas
+encore rendu un exercice dont l'echeance approche :
+
+```bash
+flask remind-due              # rappels a J-1 (echeance = demain)
+flask remind-due --days 2     # rappels a J-2
+flask remind-due --dry-run    # apercu, sans rien envoyer
+```
+
+Elle est idempotente : chaque exercice relance est marque (`j1_reminded`), donc
+la relancer le meme jour ne renvoie rien. A executer UNE FOIS PAR JOUR.
+
+Si tu passes par `create-tables` (sans Alembic), lance aussi `flask fix-schema`
+une fois pour ajouter la colonne `j1_reminded` sur une base existante.
+
+**Planification selon l'environnement :**
+
+- Render : un service `type: cron` est deja decrit dans `render.yaml`
+  (`xschool-remind`, tous les jours a 08:00 UTC).
+- Linux/cron :
+  ```cron
+  0 8 * * *  cd /chemin/xschool-backend && /chemin/.venv/bin/flask remind-due >> /var/log/xschool-remind.log 2>&1
+  ```
+- Windows (Planificateur de taches) : action quotidienne lancant
+  `flask remind-due` depuis le dossier du backend, avec le `.venv` actif.
 
 ## Docker (pile locale complete)
 

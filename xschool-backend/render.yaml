@@ -47,6 +47,52 @@ services:
       # (ex: https://xschool-front.onrender.com). '*' fonctionne mais est permissif.
       - key: CORS_ORIGINS
         value: "*"
+      # URL publique du front, pour le bouton des emails de rappel (a adapter).
+      - key: APP_PUBLIC_URL
+        sync: false
+      # Schema d'URL appli mobile pour les deep-links des notifs push.
+      - key: APP_MOBILE_SCHEME
+        sync: false
+      # Notifications push (FCM). Vide -> simulation (aucun envoi).
+      - key: PUSH_PROVIDER
+        value: fcm
+      - key: FCM_SERVER_KEY
+        sync: false
+
+  # --- Rappels automatiques J-1 (cron quotidien) ---
+  # Relance les eleves non-rendus a J-1 de l'echeance. S'execute tous les jours
+  # a 08:00 UTC. Idempotent (colonne j1_reminded). NB : le type 'cron' peut
+  # necessiter un plan payant selon ton compte Render.
+  - type: cron
+    name: xschool-remind
+    runtime: python
+    plan: free
+    rootDir: xschool-backend
+    schedule: "0 8 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: flask remind-due
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: xschool-db
+          property: connectionString
+      - key: FLASK_APP
+        value: wsgi.py
+      - key: FLASK_ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: "3.12.5"
+      # URL publique du front, pour le bouton des emails de rappel (a adapter).
+      - key: APP_PUBLIC_URL
+        sync: false
+      # Schema d'URL appli mobile pour les deep-links des notifs push.
+      - key: APP_MOBILE_SCHEME
+        sync: false
+      # Notifications push (FCM) pour les rappels automatiques J-1 / retard.
+      - key: PUSH_PROVIDER
+        value: fcm
+      - key: FCM_SERVER_KEY
+        sync: false
 
   # --- Front statique (HTML/CSS/JS) ---
   - type: web

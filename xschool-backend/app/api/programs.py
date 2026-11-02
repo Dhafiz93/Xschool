@@ -5,9 +5,9 @@ from ..extensions import db
 from ..models.academics import Program, SchoolClass, Subject
 from ..models.user import ROLE_ADMIN
 from ..utils.security import role_required
-from ..utils.tenant import get_scoped_or_404, scoped_query
+from ..utils.tenant import get_scoped_or_404, scoped_query, teacher_scope_ids
 from . import api_bp
-from .common import STAFF, arg, as_float, body, boolval, commit, err, intval, write_school_id
+from .common import STAFF, arg, as_float, body, boolval, commit, err, intval, log_action, write_school_id
 
 
 def _dict(p):
@@ -24,6 +24,14 @@ def list_programs():
     cid = intval(arg("class_id"))
     if cid is not None:
         q = q.filter(Program.class_id == cid)
+    # Un enseignant ne voit que les lignes de programme de SES classes et de
+    # SES matieres (les couples classe/matiere ou il intervient).
+    class_ids, subject_ids = teacher_scope_ids()
+    if class_ids is not None:
+        if not class_ids or not subject_ids:
+            return jsonify(items=[])
+        q = q.filter(Program.class_id.in_(class_ids),
+                     Program.subject_id.in_(subject_ids))
     rows = q.order_by(Program.class_id, Program.subject_id).all()
     return jsonify(items=[_dict(p) for p in rows])
 
@@ -49,6 +57,8 @@ def create_program():
     p.coef = as_float(data.get("coef")) or 1
     p.oblig = boolval(data.get("oblig"), True)
     p.spec = boolval(data.get("spec"), False)
+    log_action("save_program", "programs",
+               f"classe {p.class_id} / matiere {p.subject_id}")
     commit()
     return jsonify(program=_dict(p)), 201
 
@@ -64,6 +74,8 @@ def update_program(program_id):
         p.oblig = boolval(data.get("oblig"), True)
     if "spec" in data:
         p.spec = boolval(data.get("spec"), False)
+    log_action("update_program", "programs",
+               f"classe {p.class_id} / matiere {p.subject_id}")
     commit()
     return jsonify(program=_dict(p))
 
@@ -72,6 +84,8 @@ def update_program(program_id):
 @role_required(ROLE_ADMIN)
 def delete_program(program_id):
     p = get_scoped_or_404(Program, program_id)
+    log_action("delete_program", "programs",
+               f"classe {p.class_id} / matiere {p.subject_id}")
     db.session.delete(p)
     commit()
     return jsonify(status="ok")
